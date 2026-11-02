@@ -316,9 +316,9 @@ mesh status** instead of treating the failure as zero nodes.
 ## Local testing and design notes
 
 The test scripts and design notes are kept locally in `tests/` and `docs/` and
-are **not included in the published repository**. The published repository
-contains only runtime code, translations, build configuration and the CI
-workflow.
+are **not included in the published repository**. The published repository keeps
+the runtime code, translations, build configuration, CI workflow and the
+necessary documentation and license files.
 
 CI (`.github/workflows/build.yml`) builds with the 24.10 (ipk) and 25.12 (apk)
 SDKs, and fails if either the main package or the Chinese language pack is
