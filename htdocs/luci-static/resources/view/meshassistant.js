@@ -135,6 +135,10 @@ return view.extend({
 		o.value('client', _('Client'));
 		o.default = 'server';
 
+		o = s.taboption('setup', form.Flag, 'server_dhcp', _('Server Provides DHCP'), _('Keep this enabled when the Mesh server is the only gateway and should provide DHCP and IPv6 RA for the LAN. Disable it when another router on the LAN already provides DHCP: the server then keeps the gateway and DNS role but stops its own DHCP/RA server.'));
+		o.default = '1';
+		o.depends('role', 'server');
+
 		o = s.taboption('setup', form.Value, 'wifi_id', _('WiFi Network SSID'), _('SSID for the regular WiFi network.'));
 		o.default = 'meshassistant_AC';
 
@@ -143,7 +147,7 @@ return view.extend({
 			o.value(value, label);
 		o.default = 'radio1';
 
-		o = s.taboption('setup', form.MultiValue, 'apRadio', _('Mesh Radio(s)'), _('Select a radio interface for mesh backhaul traffic.'));
+		o = s.taboption('setup', form.ListValue, 'apRadio', _('Mesh Radio'), _('Select one radio interface for mesh backhaul traffic.'));
 		for (const [ value, label ] of this.radios)
 			o.value(value, label);
 		o.default = 'radio0';

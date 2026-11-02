@@ -73,6 +73,9 @@ msgstr "接口"
 msgid "K/V/R"
 msgstr "K/V/R"
 
+msgid "Keep this enabled when the Mesh server is the only gateway and should provide DHCP and IPv6 RA for the LAN. Disable it when another router on the LAN already provides DHCP: the server then keeps the gateway and DNS role but stops its own DHCP/RA server."
+msgstr "当 Mesh 服务器是唯一网关并为 LAN 提供 DHCP 和 IPv6 RA 时，请保持启用。若 LAN 上已有其他路由器提供 DHCP，请关闭此项：服务器仍保留网关和 DNS 角色，但会停止自身的 DHCP/RA 服务。"
+
 msgid "Last Seen Timestamp"
 msgstr "最后发现时间"
 
@@ -94,7 +97,7 @@ msgstr "Mesh 网络 SSID"
 msgid "Mesh Password"
 msgstr "Mesh 密码"
 
-msgid "Mesh Radio(s)"
+msgid "Mesh Radio"
 msgstr "Mesh 射频"
 
 msgid "Mesh Settings"
@@ -133,14 +136,17 @@ msgstr "普通 AP 射频"
 msgid "Reapply meshassistant Settings"
 msgstr "重新应用 MESH助手设置"
 
-msgid "Select a radio interface for mesh backhaul traffic."
-msgstr "选择用于 Mesh 回程流量的射频接口。"
+msgid "Select one radio interface for mesh backhaul traffic."
+msgstr "选择一个用于 Mesh 回程流量的射频接口。"
 
 msgid "Select the radio to be used for the regular WiFi access point."
 msgstr "选择用于普通 WiFi 接入点的射频。"
 
 msgid "Server"
 msgstr "服务器"
+
+msgid "Server Provides DHCP"
+msgstr "服务器提供 DHCP"
 
 msgid "SSID for the regular WiFi network."
 msgstr "普通 WiFi 网络的 SSID。"
