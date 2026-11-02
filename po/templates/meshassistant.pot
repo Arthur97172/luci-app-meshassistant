@@ -122,6 +122,9 @@ msgstr ""
 msgid "Node Hostname"
 msgstr ""
 
+msgid "None (wireless backhaul only)"
+msgstr ""
+
 msgid "Number of Active Nodes: %d"
 msgstr ""
 
@@ -135,6 +138,9 @@ msgid "Reapply meshassistant Settings"
 msgstr ""
 
 msgid "Select one radio interface for mesh backhaul traffic."
+msgstr ""
+
+msgid "Select the Ethernet port cabled to another Mesh device. The port is dedicated to wired backhaul and removed from the LAN bridge. Wired is used while the cable is connected; the Mesh radio is used when it is not. Choose None for wireless-only backhaul."
 msgstr ""
 
 msgid "Select the radio to be used for the regular WiFi access point."
@@ -168,4 +174,7 @@ msgid "WARNING: THIS WILL CHANGE THE IP ADDRESS OF THIS NODE, YOU WILL LOSE ACCE
 msgstr ""
 
 msgid "WiFi Network SSID"
+msgstr ""
+
+msgid "Wired Backhaul Port"
 msgstr ""

@@ -12,6 +12,7 @@
 | --- | --- |
 | 三种角色 | 服务器（Server，作为网关）、节点（Node）、客户端（Client） |
 | 普通 AP + Mesh 回程 | 普通 WiFi 与 Mesh 回程可以分别选择射频；Mesh 射频为单选 |
+| 有线回程 | 可选择专用一个 LAN 口作为 Mesh 有线回程：插网线时使用有线，拔掉后自动改用 Mesh 无线 |
 | Mesh 状态 | 读取 `batctl n`，显示活动节点数、接口、邻居节点和最后发现时间 |
 | 后台应用 | 应用设置时脚本脱离页面在后台执行，避免 WiFi / 网络重启导致请求超时或页面掉线 |
 | Dumb AP 模式 | 把节点切换为接入现有网络的哑 AP（会更换管理地址） |
@@ -73,6 +74,7 @@ make package/luci-app-meshassistant/compile V=s
    - **WiFi 网络 SSID**：普通 WiFi 接入点的名称。
    - **普通 AP 射频**：承载普通 WiFi 的射频。
    - **Mesh 射频**：承载 Mesh 回程的射频；当前脚本只支持一个（界面为单选，旧配置中的多值会被脚本拒绝）。
+   - **有线回程端口**：可选。选择一个连接到另一台 Mesh 设备的 LAN 口；默认值为「无（仅无线回程）」。该端口会从 LAN 网桥中移出并接入 `bat0`，网线两端应选择同类的端口。详见下方「有线回程」。
    - **Mesh 网络 SSID**：同一 Mesh 中所有设备必须一致。
    - **密码保护 / Mesh 密码**：开启后，普通 AP 使用 WPA3 混合模式（`sae-mixed`），Mesh 回程使用 WPA3（`sae`）；密码至少 8 位。
 3. 选择「节点」或「客户端」后，「AP 模式」标签页才会出现：
@@ -119,7 +121,7 @@ make package/luci-app-meshassistant/compile V=s
 - 节点会把原本处于启用状态的 `firewall`、`dnsmasq`、`odhcpd` 停用，并把“哪些服务是我停用的”记录到 `meshassistant` 配置中。关闭 Mesh 或把角色切回服务器时会自动恢复这些服务，不会留下永久停用的防火墙/DHCP。
 - 「AP 模式」页的设置现在会在**普通启用**时生效：脚本按「IP 模式」把 LAN 设为 DHCP 客户端，或写入「静态 IP 地址 / 网关 / 子网掩码 / DNS」，并写入「节点主机名」。启用前的 LAN 与主机名会先备份，关闭 Mesh 时自动恢复。
 - 节点不提供 DHCP/NAT，客户端由服务器（或 LAN 上已有的 DHCP 服务器）分配地址；选择静态 IP 时，节点地址应与服务器同网段且不冲突（例如服务器 `192.168.10.1`，节点 `192.168.10.2`）。
-- 节点不需要也不应保留 WAN 上行。有线回程请使用节点的 **LAN 口**连接上级设备；不要把节点的 WAN 口当作回程口。如果原来用 WiFi STA（`wwan`）上网，作为节点时应删除或禁用该 STA 接口，避免节点保留自己的默认路由。
+- 节点不需要也不应保留 WAN 上行。使用本插件的有线回程时，在两端设备的「有线回程端口」里选择相连的 **LAN 网桥端口**，不要使用 WAN 口。如果网线只是从其他路由器提供普通 LAN 上行，请把有线回程保持为「无」，把该口当作普通 LAN 口使用。如果原来用 WiFi STA（`wwan`）上网，作为节点时应删除或禁用该 STA 接口，避免节点保留自己的默认路由。
 - 一台 Mesh 可以有多台节点；所有节点的「Mesh 网络 SSID」和密码必须与服务器一致。
 
 **客户端（Client）**
@@ -128,10 +130,22 @@ make package/luci-app-meshassistant/compile V=s
 - 因此它和「节点」的实际配置效果一致，区别只在界面语义；只是扩展 Mesh 时选「节点」即可，只有在需要沿用原插件「客户端」语义时才选「客户端」。
 - 「AP 模式」标签页、IP 模式/静态地址/主机名设置和哑 AP 按钮同样会出现，使用注意事项与节点相同。
 
+**有线回程**
+
+三种角色都支持独立的专用有线回程，它按设备单独配置，与角色无关：
+
+- 在网线两端的两台设备上都选择「有线回程端口」，并把这些端口用网线相连。两端都必须是运行本插件的设备并启用了有线回程；另一端不能是仍作为普通 LAN 口使用的端口（见下方说明）。
+- 应用时，脚本会把所选端口从 `br-lan` 移出，用 `wired_backhaul_bridge_removed` / `wired_backhaul_restore_port` 记录该操作，并创建 `network.mesh_wired`（`batadv_hardif`，`master='bat0'`、`mtu='1500'`、`throughput_override='100000mbit'`）。很高的吞吐量覆盖值会让 BATMAN_V 在网线连通时优先使用有线路径；无线 hardif 仍保持配置，网线拔出时 wired hardif 变为 down，流量自动走 Mesh 无线，网线恢复后重新优先使用有线。
+- 专用端口不再承载普通 LAN 流量。不要把管理用的端口或普通 LAN 上行端口选为有线回程口，否则应用设置后该连接会中断。如果只需要普通有线上行，请把「有线回程端口」保持为「无」，按普通 LAN 口使用。
+- 端口必须属于 LAN 网桥，且不能已被 `wan` 等其他逻辑接口占用。页面只列出 LAN 网桥端口；如果保存的端口后来变得无效，脚本会在 `/tmp/meshassistant.log` 中告警，保留端口不动并回退到无线回程。
+- 有线 hardif 使用标准 1500 字节 MTU。由于启用了 `fragmentation=1`，batman-adv 会在二层分片较大的帧，因此不需要配置巨型帧。
+- 更换端口时，旧端口会先回到 LAN 网桥，再专用新端口。关闭 Mesh 会把专用端口还原到 LAN 网桥，但保留「有线回程端口」的选择值，供下次启用时使用。
+
 **两台设备的最简示例**
 
 - 服务器：Mesh 模式选「服务器」，LAN 保持 `192.168.10.1`，接好互联网上行；选择一个 Mesh 射频（例如 `radio0`），填写 Mesh 网络 SSID 和密码。如果 LAN 上已有其他 DHCP 服务器，关闭「服务器提供 DHCP」。
 - 节点：Mesh 模式选「节点」；在「AP 模式」页把「IP 模式」设为「静态」，地址 `192.168.10.2`，网关和 DNS 指向 `192.168.10.1`，主机名可选 `node2`；删除或禁用原来的 `wwan` STA。Mesh 射频、Mesh 网络 SSID、密码与服务器完全一致。
+- 如需有线回程，在两台设备上分别把相连的 LAN 口选为「有线回程端口」（例如两端都选 `lan3`）后再应用，并用网线连接这两个端口。没有网线时保持「无」即可。
 - 先保存并应用服务器，再保存并应用节点；两边用 `batctl n` 或页面顶部的「Mesh 状态」确认邻居出现。
 
 **DHCP 复用拓扑示例**
@@ -141,7 +155,8 @@ make package/luci-app-meshassistant/compile V=s
 - 三台都使用同一个「Mesh 网络 SSID」和密码；建议用 5GHz 或 6GHz 射频做 Mesh 回程，另一个射频做普通 AP。
 - `192.168.5.2`（安装了 OpenClash / OxiDNS）：Mesh 模式选「服务器」，**关闭「服务器提供 DHCP」**。它保留网关、防火墙和 DNS 角色，但不与 `192.168.5.1` 争夺 DHCP；LAN 地址保持 `192.168.5.2`。
 - `192.168.5.3`、`192.168.5.4`：Mesh 模式选「节点」；「AP 模式」页把「IP 模式」设为「DHCP」，或设为「静态」并各自填写不冲突的地址。节点会从 `192.168.5.1` 获取地址。
-- 有线回程时，网线接节点的 **LAN 口**；`192.168.5.3` 可以接在 `192.168.5.2` 的 LAN 口下，也可以直接接在 `192.168.5.1` 下。无线回程则不需要网线。
+- 在 Mesh 设备之间做有线回程时，在网线两端（例如 `.2` 与 `.3`）都选择相连的「有线回程端口」并连接这两个专用端口，不要使用 WAN 口。
+- 如果 `.3` 直接接到主路由 `.1`，由于 `.1` 不运行本插件，这不算本插件的有线回程：把 `.3` 的「有线回程端口」保持为「无」，该口按普通 LAN 口使用。Mesh 仍通过无线组网，这条网线只是给 `.3` 提供普通 LAN 上行。
 
 > 三者的共同要求：同一 Mesh 内「Mesh 网络 SSID」和密码必须一致；「Mesh 射频」只支持一个（界面为单选，旧配置中的多值会被脚本拒绝）；修改射频或 SSID 后建议检查并清理旧的 `wifi_ap_*` / `mesh_*` 配置。
 
@@ -177,7 +192,8 @@ bash /meshassistant/meshassistant.sh undumb
   - 每个接口写入后执行 `wifi reload`，最后重启网络与无线。
 - **服务器**角色：`bat0` 设为 `gw_mode=server`，加入 LAN 桥；按名称找到 `lan` / `wan` 防火墙区域，把 `bat0` 加入 `lan`、把 `mesh_batman` 从所有区域移除；保留 WAN 区域已有的 `wan` / `wan6` / `wwan` / 自定义上行，并确保 NAT 与 `lan → wan` 转发存在。「服务器提供 DHCP」关闭时，设置 `dhcp.lan.ignore=1`、关闭 RA/DHCPv6 并停用 `odhcpd`，但保留 `dnsmasq` 提供 DNS。
 - **节点 / 客户端**角色：`bat0` 设为 `gw_mode=off`，只把 `bat0` 加入 LAN 桥，不把 `wan` 端口加入桥；不删除任何防火墙区域；停用 `firewall`、`dnsmasq`、`odhcpd` 前先把“由本脚本停用”记录下来。两种角色走同一条处理路径。普通启用还会应用「AP 模式」页的 IP 模式/静态地址/网关/子网掩码/DNS 与主机名。
-- **关闭**（`enabled=0`）时：按当前和上一次的 Mesh SSID 删除 Mesh / AP 接口，删除 `bat0` 与 `mesh_batman`，把 `bat0` 移出 LAN 桥，恢复启用前的 LAN 地址、主机名、LAN DHCP/RA 设置，并重新启用由脚本停用的服务。防火墙区域本身始终保留，只移除脚本添加的成员/转发规则。
+- **有线回程**（任一角色，选择了端口时）：脚本先校验端口属于 LAN 网桥且未被其他接口占用，然后把它从 `br-lan` 移出并记录该操作，创建 `network.mesh_wired`（`batadv_hardif`，`master=bat0`、`device=<端口>`、`mtu=1500`、`throughput_override=100000mbit`）。很高的吞吐量覆盖值使 BATMAN_V 在网线连通时优先使用有线；Mesh 无线仍保持配置，网线断开时 wired hardif 变为 down，流量自动改走无线。
+- **关闭**（`enabled=0`）时：按当前和上一次的 Mesh SSID 删除 Mesh / AP 接口，删除 `mesh_wired` 并把其端口还原到 `br-lan`，删除 `bat0` 与 `mesh_batman`，把 `bat0` 移出 LAN 桥，恢复启用前的 LAN 地址、主机名、LAN DHCP/RA 设置，并重新启用由脚本停用的服务。防火墙区域本身始终保留，只移除脚本添加的成员/转发规则。
 
 本包没有 init 脚本。安装时只会运行 uci-defaults 创建默认配置（`enabled=0`），不会套用 Mesh 设置；升级和重启也不会自动改动网络，只有页面上的按钮会调用配置脚本。
 
@@ -200,9 +216,10 @@ bash /meshassistant/meshassistant.sh undumb
 ## 安全说明
 
 - rpcd ACL 精确到命令行：只允许执行 `/usr/sbin/batctl n`，以及 `/meshassistant/meshassistant.sh --detach` 和 `/meshassistant/meshassistant.sh --detach dumbap` 两种脚本调用，不接受任意参数。
-- UCI 权限：可读 `meshassistant`、`wireless`，只可写 `meshassistant`；脚本对 `network`、`firewall`、`dhcp`、`system` 的修改在 root 脚本内部完成，不经过浏览器。
+- UCI 权限：可读 `meshassistant`、`network`、`wireless`，只可写 `meshassistant`。页面读取 `network` 仅用于列出有线回程可选的 LAN 网桥端口；脚本对 `network`、`firewall`、`dhcp`、`system` 的修改在 root 脚本内部完成，不经过浏览器。
 - 默认配置为 `enabled=0`，安装和开机都不会改动网络。
 - 普通启用/关闭会修改 `network`、`firewall`、`dhcp`、`system`。脚本在第一次修改节点 LAN/主机名时把原值写入 `meshassistant` 配置的备份键，并记录由它停用的服务；关闭 Mesh 时自动恢复并删除这些备份键。
+- 有线回程同样可逆：把端口移出 `br-lan` 前，脚本记录 `wired_backhaul_bridge_removed=1` 和 `wired_backhaul_restore_port=<端口>`。关闭 Mesh 或更换所选端口时，旧端口会回到 LAN 网桥，两个键会被清除。
 - 哑 AP 模式属于破坏性操作：会更换管理地址、删除 WAN 并停用防火墙与 DHCP 服务；脚本在操作前备份五份配置，必要时可用 `undumb` 恢复。
 - 脚本日志位于 `/tmp/meshassistant.log`，可能包含 SSID、主机名和网络配置，请按需清理。
 - 除 LuCI 管理界面外，本插件不额外开放端口或服务。

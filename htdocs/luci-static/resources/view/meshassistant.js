@@ -18,6 +18,74 @@ function radioOptions(devices) {
 	return choices;
 }
 
+/*
+ * Ethernet ports that can be dedicated to wired backhaul.  Only ports of the
+ * LAN bridge are offered; ports owned by another logical interface (usually
+ * the WAN uplink) are skipped because netifd cannot use the same device for
+ * two interfaces.
+ */
+function wiredPortOptions() {
+	const lan = uci.get('network', 'lan') || {};
+	let lanDevice = lan.device;
+
+	if (Array.isArray(lanDevice))
+		lanDevice = lanDevice[0];
+
+	if (!lanDevice) {
+		const ifname = lan.ifname;
+		lanDevice = Array.isArray(ifname) ? ifname[0] : ifname;
+	}
+
+	const devices = uci.sections('network', 'device');
+	let bridge = null;
+
+	if (lanDevice)
+		bridge = devices.find(function(dev) {
+			return dev.name === lanDevice && dev.type === 'bridge';
+		});
+
+	if (!bridge)
+		bridge = devices.find(function(dev) { return dev.type === 'bridge'; });
+
+	if (!bridge)
+		return [];
+
+	const ports = Array.isArray(bridge.ports)
+		? bridge.ports
+		: (bridge.ports ? String(bridge.ports).split(/\s+/) : []);
+	const interfaces = uci.sections('network', 'interface');
+	const choices = [];
+	const seen = new Set();
+
+	for (const port of ports) {
+		if (!port || seen.has(port))
+			continue;
+		if (port === 'none' || port === 'lo' || port.indexOf('br-') === 0)
+			continue;
+		if (port === 'bat0' || port === 'mesh_batman' || port === 'mesh_wired')
+			continue;
+
+		const inUse = interfaces.some(function(iface) {
+			if (iface['.name'] === 'lan' || iface['.name'] === 'mesh_wired')
+				return false;
+
+			const dev = iface.device;
+			const ifn = iface.ifname;
+			const ifnames = Array.isArray(ifn) ? ifn : (ifn ? [ ifn ] : []);
+
+			return dev === port || ifnames.indexOf(port) !== -1;
+		});
+
+		if (inUse)
+			continue;
+
+		seen.add(port);
+		choices.push([ port, port ]);
+	}
+
+	return choices;
+}
+
 function renderStatus(status) {
 	const rows = status.rows;
 	const children = [
@@ -76,12 +144,14 @@ function runScript(args) {
 
 return view.extend({
 	radios: [],
+	wiredPorts: [],
 	status: { ok: true, rows: [] },
 
 	load() {
 		return Promise.all([
 			uci.load('meshassistant'),
-			uci.load('wireless')
+			uci.load('wireless'),
+			uci.load('network')
 		]).then(() => {
 			return Promise.all([
 				network.getWifiDevices().catch(() => []),
@@ -93,6 +163,14 @@ return view.extend({
 				: uci.sections('wireless', 'wifi-device').map(function(s) {
 					return [ s['.name'], s['.name'] ];
 				});
+
+			this.wiredPorts = wiredPortOptions();
+
+			const current = uci.get('meshassistant', 'config', 'wired_backhaul');
+
+			if (current && current !== 'none' &&
+			    !this.wiredPorts.some(function(p) { return p[0] === current; }))
+				this.wiredPorts.unshift([ current, current ]);
 
 			this.status = utils.parseStatus(reply);
 		});
@@ -151,6 +229,12 @@ return view.extend({
 		for (const [ value, label ] of this.radios)
 			o.value(value, label);
 		o.default = 'radio0';
+
+		o = s.taboption('setup', form.ListValue, 'wired_backhaul', _('Wired Backhaul Port'), _('Select the Ethernet port cabled to another Mesh device. The port is dedicated to wired backhaul and removed from the LAN bridge. Wired is used while the cable is connected; the Mesh radio is used when it is not. Choose None for wireless-only backhaul.'));
+		o.value('none', _('None (wireless backhaul only)'));
+		for (const [ value, label ] of this.wiredPorts)
+			o.value(value, label);
+		o.default = 'none';
 
 		o = s.taboption('setup', form.Value, 'mesh_id', _('Mesh Network SSID'), _('Ensure that the SSID is the same across all the servers/nodes in your mesh network.'));
 		o.default = 'meshassistant_AC';

@@ -18,6 +18,7 @@ The package lives under **Network → Easy Mesh**
 | --- | --- |
 | Three roles | Server (gateway), Node and Client |
 | Regular AP + mesh backhaul | Separate radios for the regular WiFi AP and the mesh backhaul; select only one mesh radio with the current script |
+| Wired backhaul | Optionally dedicate one LAN port to the mesh: wired is used while the cable is connected, and the mesh radio takes over when it is not |
 | Mesh status | Reads `batctl n` and shows the active node count, interface, neighbor node and last-seen time |
 | Background apply | The script detaches from the page, so a WiFi / network restart cannot time out the request or drop the browser |
 | Dumb AP mode | Turns a node into a dumb access point attached to an existing network (changes the management address) |
@@ -93,6 +94,10 @@ and `luci-i18n-meshassistant-zh-cn` are produced together.
    - **Mesh Radio**: the radio that carries mesh backhaul traffic. This is a
      single-select field; a multi-value setting left by an older version is
      rejected by the script.
+   - **Wired Backhaul Port**: optionally dedicate a LAN port cabled to another
+     mesh device. The default is **None (wireless backhaul only)**. The port is
+     removed from the LAN bridge and attached to `bat0`; select the same kind of
+     port at both ends of the cable. See **Wired backhaul** below.
    - **Mesh Network SSID**: must be identical on every device in the mesh.
    - **Password Protection / Mesh Password**: when enabled, the regular AP uses
      WPA3 mixed mode (`sae-mixed`) and the mesh backhaul uses WPA3 (`sae`); the
@@ -191,10 +196,12 @@ are **Nodes**.
   from an existing LAN DHCP server). When using a static address, give the node
   a non-conflicting address in the same subnet (for example server
   `192.168.10.1`, node `192.168.10.2`).
-- A node should not keep a WAN uplink. For wired backhaul, connect the parent
-  device to the node's **LAN port**, not its WAN port. If the device used a
-  WiFi STA (`wwan`) for internet, remove or disable it on a node so it does not
-  keep a competing default route.
+- A node should not keep a WAN uplink. For the plugin's wired backhaul, select
+  the cabled **LAN bridge port** under **Wired Backhaul Port** on both devices
+  instead of using the WAN port. If the cable only provides an ordinary LAN
+  uplink from another router, leave wired backhaul at **None** and use a normal
+  LAN port. If the device used a WiFi STA (`wwan`) for internet, remove or
+  disable it on a node so it does not keep a competing default route.
 - Multiple nodes are allowed. Every node must use the same **Mesh Network
   SSID** and password as the server.
 
@@ -210,6 +217,40 @@ are **Nodes**.
 - The AP Mode tab and the Dumb AP button are shown as well; the same caveats as
   Node apply, including the LAN / hostname backup and restore on disable.
 
+**Wired backhaul (optional)**
+
+All three roles support a dedicated wired backhaul. It is configured per device
+and is independent of the role:
+
+- Choose **Wired Backhaul Port** on each device that is connected by cable, and
+  cable those two ports together. Both ends must be meshassistant devices with a
+  wired port selected; the cable must not be connected to a port that is still
+  an ordinary LAN port on the other side (see the note below).
+- When applied, the script removes the selected port from `br-lan`, marks the
+  removal in `wired_backhaul_bridge_removed` / `wired_backhaul_restore_port`,
+  and creates `network.mesh_wired` as a `batadv_hardif` with
+  `master='bat0'`, `mtu='1500'` and a very high
+  `throughput_override='100000mbit'`. BATMAN_V therefore prefers the wired path
+  whenever the cable is up. Both wired and wireless hardifs stay configured;
+  when the cable is unplugged the wired hardif goes down and traffic continues
+  over the mesh radio, and it returns to the wired path when the cable comes
+  back.
+- The dedicated port no longer carries ordinary LAN traffic. Do not select the
+  port used for management or for a plain LAN uplink, or that connection will
+  stop working when the settings are applied. If you only need a normal wired
+  uplink, leave **Wired Backhaul Port** at **None** and use the port as a normal
+  LAN port instead.
+- The port must belong to the LAN bridge and must not be used by another logical
+  interface such as `wan`. The page only lists LAN bridge ports; if the saved
+  port becomes invalid, the script warns in `/tmp/meshassistant.log` and falls
+  back to the mesh radio without removing the port.
+- The wired hardif keeps a standard 1500-byte MTU. With `fragmentation=1`,
+  batman-adv fragments larger frames at layer 2, so no jumbo-frame configuration
+  is needed.
+- Changing the selection restores the old port to the LAN bridge and dedicates
+  the new one. Disabling the mesh restores the dedicated port but keeps the
+  saved **Wired Backhaul Port** value for the next enable.
+
 **Minimal two-device example**
 
 - Server: choose **Server**, keep LAN at `192.168.10.1`, and connect the
@@ -221,6 +262,9 @@ are **Nodes**.
   `192.168.10.1`, the same netmask, and **DNS Server** `192.168.10.1`. Remove
   or disable the old `wwan` STA, then use exactly the same Mesh Radio, Mesh
   Network SSID and password as the server.
+- For wired backhaul, select the cabled LAN port under **Wired Backhaul Port**
+  on both devices (for example `lan3` on each side) before applying, and cable
+  those two ports together. If no cable is present, leave it at **None**.
 - Save and apply the server first, then the node; check `batctl n` or the
   **Mesh Status** section on both devices for a neighbor.
 
@@ -246,9 +290,13 @@ DHCP, with the mesh devices on the same LAN:
 - On each node, use **AP Mode** with **IP Mode: DHCP**, or **Static** with a
   free address in `192.168.5.0/24` and gateway / DNS set to the server
   `192.168.5.2`. Use the same Mesh Radio, Mesh Network SSID and password.
-- Connect the wired backhaul from the main router or the server to the node's
-  **LAN port**, never its WAN port. `.3` may be cabled to `.2` or directly to
-  `.1`; the mesh still forms over WiFi and the cable simply adds a path.
+- For wired backhaul between mesh devices, select the cabled LAN port under
+  **Wired Backhaul Port** on both ends (for example `.2` and `.3`) and cable
+  those dedicated ports together. Never use a WAN port.
+- A cable from `.3` to the main router `.1` is not a meshassistant wired
+  backhaul, because `.1` does not run this plugin: leave **Wired Backhaul Port**
+  at **None** and use a normal LAN port there. The mesh still forms over WiFi,
+  and that cable simply gives `.3` an ordinary LAN uplink.
 
 > Common requirements: every device must use the same **Mesh Network SSID** and
 > password; **Mesh Radio** is single-select (a multi-value setting left by an
@@ -316,11 +364,19 @@ configuration, running as root:
   the AP Mode tab are applied after backing up the previous values, and
   `firewall`, `dnsmasq` and `odhcpd` are disabled with their prior state
   recorded. Both roles follow the same code path in the script.
+- **Wired backhaul** (any role, when a port is selected): the script validates
+  that the port is a LAN bridge port not owned by another interface, removes it
+  from `br-lan`, records the removal, and creates `network.mesh_wired`
+  (`batadv_hardif`, `master=bat0`, `device=<port>`, `mtu=1500`,
+  `throughput_override=100000mbit`). The high throughput override makes BATMAN_V
+  prefer the wired link while it is up; the mesh radio remains configured and
+  is used automatically when the wired hardif goes down.
 - **Disabling** (`enabled=0`): removes the mesh / AP interfaces for the current
-  and previously recorded SSID, deletes `bat0` and `mesh_batman`, takes `bat0`
-  out of the LAN bridge, restores the backed-up LAN address, hostname and
-  `dhcp.lan` values, re-enables the services it disabled and reloads
-  networking. It only undoes changes the script recorded as its own.
+  and previously recorded SSID, removes `mesh_wired` and returns its port to
+  `br-lan`, deletes `bat0` and `mesh_batman`, takes `bat0` out of the LAN
+  bridge, restores the backed-up LAN address, hostname and `dhcp.lan` values,
+  re-enables the services it disabled and reloads networking. It only undoes
+  changes the script recorded as its own.
 
 The package ships no init script. Installation only runs the uci-defaults
 script, which creates the default configuration (`enabled=0`) without applying
@@ -360,8 +416,9 @@ mesh status** instead of treating the failure as zero nodes.
   two commands `/meshassistant/meshassistant.sh --detach` and
   `/meshassistant/meshassistant.sh --detach dumbap` may be executed; arbitrary
   arguments are not accepted.
-- UCI permissions: `meshassistant` and `wireless` are readable, only
-  `meshassistant` is writable. Changes to `network`, `firewall`, `dhcp` and
+- UCI permissions: `meshassistant`, `network` and `wireless` are readable, only
+  `meshassistant` is writable. The page reads `network` solely to offer the LAN
+  bridge ports for wired backhaul. Changes to `network`, `firewall`, `dhcp` and
   `system` happen inside the root script, never through the browser.
 - The default configuration is `enabled=0`; installing and booting never touch
   the network.
@@ -373,6 +430,10 @@ mesh status** instead of treating the failure as zero nodes.
   `/etc/config/meshassistant`. Disabling the mesh restores exactly those values
   and re-enables those services. It never deletes firewall zones and only
   removes `bat0` from a zone or the forwarding rule that it recorded adding.
+- Wired backhaul is reversible too: before removing a port from `br-lan` the
+  script records `wired_backhaul_bridge_removed=1` and
+  `wired_backhaul_restore_port=<port>`. Disabling the mesh (or changing the
+  selected port) puts the port back into the LAN bridge and clears both keys.
 - Dumb AP mode is destructive: it changes the management address, removes WAN
   and disables the firewall and DHCP services. Five configuration files are
   backed up first, and `undumb` can restore them.

@@ -307,6 +307,138 @@ apply_node_lan() {
     uci commit meshassistant
 }
 
+# ---------------------------------------------------------------------------
+# Wired backhaul
+#
+# The selected Ethernet port is removed from the LAN bridge and attached to
+# bat0 as a batadv_hardif.  Both ends of the cable must select their port.
+# BATMAN_V normally rates a wired link by its link speed; the throughput
+# override makes the wired link win even when the 802.11s backhaul reports a
+# higher rate.  When the cable is unplugged the hardif goes down and BATMAN_V
+# automatically falls back to the wireless hardif.
+# ---------------------------------------------------------------------------
+
+wired_backhaul_port() {
+    local port
+    port=$(uci -q get meshassistant.config.wired_backhaul)
+    case "$port" in
+        ''|none) return 1 ;;
+    esac
+    printf '%s\n' "$port"
+}
+
+wired_port_is_usable() {
+    local port="$1" section dev ifn ports lan_section
+
+    case "$port" in
+        bat0|mesh_batman|mesh_wired|lo|br-*|none|'') return 1 ;;
+    esac
+    case "$port" in
+        *[!A-Za-z0-9_.-]*|.*) return 1 ;;
+    esac
+
+    # A port that already belongs to another logical interface (for example
+    # the WAN uplink) cannot be dedicated to backhaul without breaking that
+    # interface.  netifd would also try to claim the device twice.
+    for section in $(uci show network 2>/dev/null \
+            | sed -n 's/^network\.\([^.]*\)=interface$/\1/p'); do
+        case "$section" in
+            lan|mesh_wired) continue ;;
+        esac
+        dev=$(uci -q get "network.$section.device")
+        ifn=$(uci -q get "network.$section.ifname")
+        case " $dev $ifn " in
+            *" $port "*) return 1 ;;
+        esac
+    done
+
+    # Reapplying the same port: it is already the dedicated hardif.
+    if [ "$(uci -q get network.mesh_wired.device)" = "$port" ]; then
+        return 0
+    fi
+
+    # A new port must be a member of the LAN bridge and of no other bridge.
+    lan_section=$(lan_bridge_section)
+    [ -n "$lan_section" ] || return 1
+    ports=$(uci -q get "network.$lan_section.ports")
+    case " $ports " in
+        *" $port "*) ;;
+        *) return 1 ;;
+    esac
+
+    for section in $(uci show network 2>/dev/null \
+            | sed -n "s/^network\.\([^.]*\)\.type='bridge'\$/\1/p"); do
+        [ "$section" = "$lan_section" ] && continue
+        ports=$(uci -q get "network.$section.ports")
+        case " $ports " in
+            *" $port "*) return 1 ;;
+        esac
+    done
+
+    return 0
+}
+
+remove_wired_backhaul() {
+    local port restore
+    port=$(uci -q get network.mesh_wired.device)
+    [ -z "$port" ] && port=$(uci -q get meshassistant.config.wired_backhaul_restore_port)
+    restore=$(uci -q get meshassistant.config.wired_backhaul_bridge_removed)
+
+    if uci -q get network.mesh_wired >/dev/null; then
+        uci -q del network.mesh_wired
+        echo "Removed the wired backhaul interface."
+    fi
+
+    if [ "$restore" = 1 ] && [ -n "$port" ]; then
+        bridge_add_port "$port"
+    fi
+
+    uci -q del meshassistant.config.wired_backhaul_bridge_removed
+    uci -q del meshassistant.config.wired_backhaul_restore_port
+}
+
+apply_wired_backhaul() {
+    local port section ports
+
+    if ! port=$(wired_backhaul_port); then
+        remove_wired_backhaul
+        return 0
+    fi
+
+    # Give the previous port back to the LAN bridge when the selection
+    # changes; the new port is removed below.
+    if [ "$(uci -q get network.mesh_wired.device)" != "$port" ]; then
+        remove_wired_backhaul
+    fi
+
+    if ! wired_port_is_usable "$port"; then
+        echo "Warning: '$port' cannot be used for wired backhaul; using the Mesh radio."
+        remove_wired_backhaul
+        return 1
+    fi
+
+    section=$(lan_bridge_section)
+    if [ -n "$section" ]; then
+        ports=$(uci -q get "network.$section.ports")
+        case " $ports " in
+            *" $port "*)
+                uci del_list "network.$section.ports=$port"
+                uci set meshassistant.config.wired_backhaul_bridge_removed=1
+                uci set meshassistant.config.wired_backhaul_restore_port="$port"
+                echo "Removed '$port' from the LAN bridge for wired backhaul."
+                ;;
+        esac
+    fi
+
+    uci set network.mesh_wired=interface
+    uci set network.mesh_wired.proto='batadv_hardif'
+    uci set network.mesh_wired.master='bat0'
+    uci set network.mesh_wired.device="$port"
+    uci set network.mesh_wired.mtu='1500'
+    uci set network.mesh_wired.throughput_override='100000mbit'
+    echo "Wired backhaul enabled on '$port'."
+}
+
 # Dumb AP Mode Block
 set_apmode() {
     # Backup our configs
@@ -673,6 +805,11 @@ create_batman_network() {
     uci set network.mesh_batman.mtu='1536'
     echo "Configured mesh_batman interface."
 
+    # Attach the optional wired backhaul port to bat0.  This is done for
+    # servers, nodes and clients alike: both ends of the cable must have the
+    # same kind of hardif for the wired link to become a batman-adv neighbor.
+    apply_wired_backhaul
+
     # Commit network and the recorded restore state.
     uci commit network
     uci commit meshassistant
@@ -845,6 +982,9 @@ restart_and_reload() {
 }
 
 disable_batman_interfaces() {
+    # Return the wired backhaul port to the LAN bridge before bat0 goes away.
+    remove_wired_backhaul
+
     # Delete the bat0 interface
     if [ "$(uci -q get network.bat0)" = "interface" ]; then
         uci -q del network.bat0

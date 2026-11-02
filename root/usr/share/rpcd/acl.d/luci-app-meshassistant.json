@@ -9,7 +9,7 @@
 			"file": {
 				"/usr/sbin/batctl n": [ "exec" ]
 			},
-			"uci": [ "meshassistant", "wireless" ]
+			"uci": [ "meshassistant", "network", "wireless" ]
 		},
 		"write": {
 			"ubus": {

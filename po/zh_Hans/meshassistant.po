@@ -124,6 +124,9 @@ msgstr "节点"
 msgid "Node Hostname"
 msgstr "节点主机名"
 
+msgid "None (wireless backhaul only)"
+msgstr "无（仅无线回程）"
+
 msgid "Number of Active Nodes: %d"
 msgstr "活动节点数：%d"
 
@@ -138,6 +141,9 @@ msgstr "重新应用 MESH助手设置"
 
 msgid "Select one radio interface for mesh backhaul traffic."
 msgstr "选择一个用于 Mesh 回程流量的射频接口。"
+
+msgid "Select the Ethernet port cabled to another Mesh device. The port is dedicated to wired backhaul and removed from the LAN bridge. Wired is used while the cable is connected; the Mesh radio is used when it is not. Choose None for wireless-only backhaul."
+msgstr "选择连接到另一台 Mesh 设备的以太网端口。该端口将专用于有线回程并从 LAN 网桥中移除。网线连接时使用有线回程；未连接时使用 Mesh 射频。仅使用无线回程请选择“无”。"
 
 msgid "Select the radio to be used for the regular WiFi access point."
 msgstr "选择用于普通 WiFi 接入点的射频。"
@@ -171,3 +177,6 @@ msgstr "警告：这将更改此节点的 IP 地址，你将无法再访问此�
 
 msgid "WiFi Network SSID"
 msgstr "WiFi 网络 SSID"
+
+msgid "Wired Backhaul Port"
+msgstr "有线回程端口"
