@@ -183,7 +183,7 @@ return view.extend({
 				_('First set up the Mesh gateway server, then set up the nodes. When configuring a Mesh node, first enable Mesh WiFi on the radio device and establish a connection, then enable it as a DHCP node. The default settings are usually sufficient for most Mesh WiFi configurations.')
 			]),
 			E('p', {}, [
-				_('Mesh is powered by Batman-adv. Official website:'), ' ',
+				_('Official website:'), ' ',
 				E('a', {
 					'href': 'https://www.open-mesh.org/projects/batman-adv/wiki',
 					'target': '_blank',
@@ -307,7 +307,26 @@ return view.extend({
 
 		o = s.taboption('apmode', form.Button, '_btn_apmode', _('Enable Dumb AP Mode'), _('WARNING: THIS WILL CHANGE THE IP ADDRESS OF THIS NODE, YOU WILL LOSE ACCESS TO THIS UI'));
 		o.onclick = ui.createHandlerFn(this, function() {
-			return runScript([ '--detach', 'dumbap' ]);
+			ui.showModal(_('Enable Dumb AP Mode'), [
+				E('p', {}, [
+					_('WARNING: THIS WILL CHANGE THE IP ADDRESS OF THIS NODE, YOU WILL LOSE ACCESS TO THIS UI')
+				]),
+				E('p', {}, [ _('Continue?') ]),
+				E('div', { 'class': 'right' }, [
+					E('button', {
+						'class': 'btn cbi-button',
+						'click': ui.hideModal
+					}, _('Cancel')),
+					' ',
+					E('button', {
+						'class': 'btn cbi-button-negative',
+						'click': ui.createHandlerFn(this, function() {
+							ui.hideModal();
+							return runScript([ '--detach', 'dumbap' ]);
+						})
+					}, _('Enable Dumb AP Mode'))
+				])
+			]);
 		});
 		o.depends('role', /^(off|client)$/);
 

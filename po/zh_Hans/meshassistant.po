@@ -19,6 +19,9 @@ msgstr "较差 RSSI 阈值"
 msgid "Basic Setup"
 msgstr "基础设置"
 
+msgid "Cancel"
+msgstr "取消"
+
 msgid "Choose if the node uses DHCP or a Static IP"
 msgstr "选择节点使用 DHCP 还是静态 IP"
 
@@ -85,9 +88,6 @@ msgstr "除非你了解相关设置，否则请保持默认值。"
 msgid "Mesh Gateway IP Address"
 msgstr "Mesh 网关 IP 地址"
 
-msgid "Mesh is powered by Batman-adv. Official website:"
-msgstr "Mesh由Batman-adv驱动官方网站："
-
 msgid "Mesh Mode"
 msgstr "Mesh 模式"
 
@@ -130,6 +130,9 @@ msgstr "无（仅无线回程）"
 msgid "Number of Active Nodes: %d"
 msgstr "活动节点数：%d"
 
+msgid "Official website:"
+msgstr "官方网站："
+
 msgid "Password Protection"
 msgstr "密码保护"
 
@@ -162,6 +165,9 @@ msgstr "静态"
 
 msgid "Static IP Address"
 msgstr "静态 IP 地址"
+
+msgid "Continue?"
+msgstr "继续？"
 
 msgid "Toggle this switch to activate or deactivate the Mesh Network on this device according to the settings specified in this configuration."
 msgstr "根据此配置中的设置，切换此开关以启用或停用本设备上的 Mesh 网络。"

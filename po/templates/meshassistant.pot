@@ -17,6 +17,9 @@ msgstr ""
 msgid "Basic Setup"
 msgstr ""
 
+msgid "Cancel"
+msgstr ""
+
 msgid "Choose if the node uses DHCP or a Static IP"
 msgstr ""
 
@@ -83,9 +86,6 @@ msgstr ""
 msgid "Mesh Gateway IP Address"
 msgstr ""
 
-msgid "Mesh is powered by Batman-adv. Official website:"
-msgstr ""
-
 msgid "Mesh Mode"
 msgstr ""
 
@@ -128,6 +128,9 @@ msgstr ""
 msgid "Number of Active Nodes: %d"
 msgstr ""
 
+msgid "Official website:"
+msgstr ""
+
 msgid "Password Protection"
 msgstr ""
 
@@ -159,6 +162,9 @@ msgid "Static"
 msgstr ""
 
 msgid "Static IP Address"
+msgstr ""
+
+msgid "Continue?"
 msgstr ""
 
 msgid "Toggle this switch to activate or deactivate the Mesh Network on this device according to the settings specified in this configuration."
