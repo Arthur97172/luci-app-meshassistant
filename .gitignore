@@ -1,0 +1,18 @@
+# Local-only development material, not part of the published repository
+tests/
+docs/
+
+# Build and test artifacts
+bin/
+build_dir/
+staging_dir/
+logs/
+tmp/
+node_modules/
+*.ipk
+*.apk
+*.log
+
+# Editor and OS files
+.DS_Store
+*.swp

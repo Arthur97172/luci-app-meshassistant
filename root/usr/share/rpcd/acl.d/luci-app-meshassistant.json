@@ -1,0 +1,25 @@
+{
+	"luci-app-meshassistant": {
+		"description": "Grant access to luci-app-meshassistant",
+		"read": {
+			"ubus": {
+				"file": [ "exec" ],
+				"luci-rpc": [ "getWirelessDevices" ]
+			},
+			"file": {
+				"/usr/sbin/batctl n": [ "exec" ]
+			},
+			"uci": [ "meshassistant", "wireless" ]
+		},
+		"write": {
+			"ubus": {
+				"file": [ "exec" ]
+			},
+			"file": {
+				"/meshassistant/meshassistant.sh --detach": [ "exec" ],
+				"/meshassistant/meshassistant.sh --detach dumbap": [ "exec" ]
+			},
+			"uci": [ "meshassistant" ]
+		}
+	}
+}

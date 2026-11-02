@@ -1,0 +1,14 @@
+{
+	"admin/network/meshassistant": {
+		"title": "Easy Mesh",
+		"order": 60,
+		"action": {
+			"type": "view",
+			"path": "meshassistant"
+		},
+		"depends": {
+			"acl": [ "luci-app-meshassistant" ],
+			"uci": { "meshassistant": true }
+		}
+	}
+}

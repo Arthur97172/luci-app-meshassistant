@@ -1,0 +1,165 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: luci-app-meshassistant\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Advanced Settings"
+msgstr ""
+
+msgid "AP Mode"
+msgstr ""
+
+msgid "Bad RSSI Threshold"
+msgstr ""
+
+msgid "Basic Setup"
+msgstr ""
+
+msgid "Choose if the node uses DHCP or a Static IP"
+msgstr ""
+
+msgid "Choose whether this device is a Server, Client, or Node in the mesh network."
+msgstr ""
+
+msgid "Client"
+msgstr ""
+
+msgid "DHCP"
+msgstr ""
+
+msgid "DNS Server"
+msgstr ""
+
+msgid "Easy Mesh"
+msgstr ""
+
+msgid "Easy Mesh WiFi Setup"
+msgstr ""
+
+msgid "Enable Dumb AP Mode"
+msgstr ""
+
+msgid "Enable Mesh Networking"
+msgstr ""
+
+msgid "Enable this switch to require a password to join your Mesh Network."
+msgstr ""
+
+msgid "Ensure that the SSID is the same across all the servers/nodes in your mesh network."
+msgstr ""
+
+msgid "Failed to apply mesh settings: %s"
+msgstr ""
+
+msgid "First set up the Mesh gateway server, then set up the nodes. When configuring a Mesh node, first enable Mesh WiFi on the radio device and establish a connection, then enable it as a DHCP node. The default settings are usually sufficient for most Mesh WiFi configurations."
+msgstr ""
+
+msgid "Good RSSI Threshold"
+msgstr ""
+
+msgid "IPv4 netmask"
+msgstr ""
+
+msgid "IP Mode"
+msgstr ""
+
+msgid "Interface"
+msgstr ""
+
+msgid "K/V/R"
+msgstr ""
+
+msgid "Last Seen Timestamp"
+msgstr ""
+
+msgid "Leave these settings as default unless you know what you are doing."
+msgstr ""
+
+msgid "Mesh Gateway IP Address"
+msgstr ""
+
+msgid "Mesh is powered by Batman-adv. Official website:"
+msgstr ""
+
+msgid "Mesh Mode"
+msgstr ""
+
+msgid "Mesh Network SSID"
+msgstr ""
+
+msgid "Mesh Password"
+msgstr ""
+
+msgid "Mesh Radio(s)"
+msgstr ""
+
+msgid "Mesh Settings"
+msgstr ""
+
+msgid "Mesh Status"
+msgstr ""
+
+msgid "Mesh settings are being applied in the background."
+msgstr ""
+
+msgid "Mobility Domain"
+msgstr ""
+
+msgid "Neighbor Nodes"
+msgstr ""
+
+msgid "No neighbor nodes found."
+msgstr ""
+
+msgid "Node"
+msgstr ""
+
+msgid "Node Hostname"
+msgstr ""
+
+msgid "Number of Active Nodes: %d"
+msgstr ""
+
+msgid "Password Protection"
+msgstr ""
+
+msgid "Regular AP Radio"
+msgstr ""
+
+msgid "Reapply meshassistant Settings"
+msgstr ""
+
+msgid "Select a radio interface for mesh backhaul traffic."
+msgstr ""
+
+msgid "Select the radio to be used for the regular WiFi access point."
+msgstr ""
+
+msgid "Server"
+msgstr ""
+
+msgid "SSID for the regular WiFi network."
+msgstr ""
+
+msgid "Static"
+msgstr ""
+
+msgid "Static IP Address"
+msgstr ""
+
+msgid "Toggle this switch to activate or deactivate the Mesh Network on this device according to the settings specified in this configuration."
+msgstr ""
+
+msgid "Unable to read mesh status."
+msgstr ""
+
+msgid "Use this button to apply/reapply meshassistant configuration after you Save & Apply."
+msgstr ""
+
+msgid "WARNING: THIS WILL CHANGE THE IP ADDRESS OF THIS NODE, YOU WILL LOSE ACCESS TO THIS UI"
+msgstr ""
+
+msgid "WiFi Network SSID"
+msgstr ""
