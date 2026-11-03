@@ -35,10 +35,10 @@ msgstr ""
 msgid "DNS Server"
 msgstr ""
 
-msgid "Easy Mesh"
+msgid "Mesh Assistant"
 msgstr ""
 
-msgid "Easy Mesh WiFi Setup"
+msgid "Mesh Assistant WiFi Setup"
 msgstr ""
 
 msgid "Enable Dumb AP Mode"
@@ -60,6 +60,9 @@ msgid "First set up the Mesh gateway server, then set up the nodes. When configu
 msgstr ""
 
 msgid "Good RSSI Threshold"
+msgstr ""
+
+msgid "IP Address"
 msgstr ""
 
 msgid "IPv4 netmask"

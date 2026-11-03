@@ -1,6 +1,6 @@
 {
 	"admin/network/meshassistant": {
-		"title": "Easy Mesh",
+		"title": "Mesh Assistant",
 		"order": 60,
 		"action": {
 			"type": "view",

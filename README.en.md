@@ -1,4 +1,4 @@
-# Easy Mesh (luci-app-meshassistant)
+# Mesh Assistant (luci-app-meshassistant)
 
 [简体中文](README.md) | English
 
@@ -8,9 +8,9 @@ server, node or client — the page also shows the current neighbor status. The
 whole frontend is written in JavaScript and does not depend on `luci-compat`,
 `luci-lua-runtime` or `libiwinfo-lua`.
 
-The package lives under **Network → Easy Mesh**
+The package lives under **Network → Mesh Assistant**
 (`admin/network/meshassistant`; the Chinese interface calls it
-**网络 → MESH助手**) and the page title is **Easy Mesh WiFi Setup**.
+**网络 → MESH助手**) and the page title is **Mesh Assistant WiFi Setup**.
 
 > **Detailed guide**: role differences, when a Node/Client needs a static IP,
 > DHCP reuse, wired backhaul, Dumb AP mode, troubleshooting, and complete
@@ -25,8 +25,8 @@ The package lives under **Network → Easy Mesh**
 | Three roles | Server (gateway), Node and Client |
 | Regular AP + mesh backhaul | Separate radios for the regular WiFi AP and the mesh backhaul; the mesh radio is single-select |
 | Wired backhaul | Optionally dedicate one LAN port to the mesh: wired is used while the cable is connected, and the mesh radio takes over when it is not |
-| Mesh status | Reads `batctl n` and shows the active node count, interface, neighbor node and last-seen time |
-| Background apply | The script detaches from the page, so a WiFi / network restart cannot time out the request or drop the browser |
+| Mesh status | Reads `batctl n` plus the Batman-adv translation table and DAT cache, and shows the active node count, interface, neighbor nodes, the IP addresses of each neighbor and its clients, and the last-seen time |
+| Background apply | The script detaches from the page and only performs non-destructive network/wireless reloads, so the request cannot time out or drop the browser |
 | Dumb AP mode | Turns a node into a dumb access point attached to an existing network (changes the management address; asks for confirmation first) |
 | DHCP reuse | The server can provide or skip DHCP/IPv6 RA, so an existing LAN DHCP server can stay in charge |
 | Internationalization | English and Simplified Chinese; Chinese ships as a separate language pack |
@@ -58,7 +58,7 @@ The package lives under **Network → Easy Mesh**
    apk add --allow-untrusted /tmp/luci-i18n-meshassistant-zh-cn-*.apk
    ```
 
-3. Refresh LuCI; the entry appears under **Network → Easy Mesh**.
+3. Refresh LuCI; the entry appears under **Network → Mesh Assistant**.
 
 > Without the language pack the interface stays in English. The package is
 > architecture independent (`all` for ipk, `noarch` for apk), so one artifact
@@ -81,7 +81,7 @@ and `luci-i18n-meshassistant-zh-cn` are produced together.
 
 ## Quick start
 
-1. Open **Network → Easy Mesh** and decide whether this device is the
+1. Open **Network → Mesh Assistant** and decide whether this device is the
    **Server** or a **Node**. There should be exactly one server per mesh.
 2. In **Basic Setup**, choose the role and fill in the WiFi Network SSID,
    Regular AP Radio, Mesh Radio, Mesh Network SSID and password. Every device

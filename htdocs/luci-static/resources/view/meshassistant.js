@@ -112,6 +112,7 @@ function renderStatus(status) {
 			E('div', { 'class': 'tr table-titles' }, [
 				E('div', { 'class': 'th' }, [ _('Interface') ]),
 				E('div', { 'class': 'th' }, [ _('Neighbor Nodes') ]),
+				E('div', { 'class': 'th' }, [ _('IP Address') ]),
 				E('div', { 'class': 'th' }, [ _('Last Seen Timestamp') ])
 			])
 		]);
@@ -120,6 +121,9 @@ function renderStatus(status) {
 			table.appendChild(E('div', { 'class': 'tr' }, [
 				E('div', { 'class': 'td' }, [ row.iface || '-' ]),
 				E('div', { 'class': 'td' }, [ row.neighbor ]),
+				E('div', { 'class': 'td' }, [
+					row.ips && row.ips.length ? row.ips.join(', ') : '-'
+				]),
 				E('div', { 'class': 'td' }, [ row.lastSeen ])
 			]));
 		}
@@ -155,9 +159,12 @@ return view.extend({
 		]).then(() => {
 			return Promise.all([
 				network.getWifiDevices().catch(() => []),
-				fs.exec(BATCTL, [ 'n' ]).catch(() => null)
+				fs.exec(BATCTL, [ 'n' ]).catch(() => null),
+				fs.exec(BATCTL, [ 'meshif', 'bat0', 'transtable_global_json' ]).catch(() => null),
+				fs.exec(BATCTL, [ 'meshif', 'bat0', 'dat_cache_json' ]).catch(() => null),
+				network.getHostHints().catch(() => null)
 			]);
-		}).then(([ devices, reply ]) => {
+		}).then(([ devices, reply, ttReply, datReply, hosts ]) => {
 			this.radios = devices.length
 				? radioOptions(devices)
 				: uci.sections('wireless', 'wifi-device').map(function(s) {
@@ -172,7 +179,7 @@ return view.extend({
 			    !this.wiredPorts.some(function(p) { return p[0] === current; }))
 				this.wiredPorts.unshift([ current, current ]);
 
-			this.status = utils.parseStatus(reply);
+			this.status = utils.parseStatus(reply, ttReply, datReply, hosts);
 		});
 	},
 
@@ -192,7 +199,7 @@ return view.extend({
 			])
 		]);
 
-		const m = new form.Map('meshassistant', _('Easy Mesh WiFi Setup'), descEl);
+		const m = new form.Map('meshassistant', _('Mesh Assistant WiFi Setup'), descEl);
 		const s = m.section(form.TypedSection, 'meshassistant', _('Mesh Settings'));
 
 		s.anonymous = true;

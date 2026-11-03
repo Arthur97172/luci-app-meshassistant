@@ -58,7 +58,7 @@ cp /etc/config/network /etc/config/wireless /etc/config/dhcp \
 
 ## 2. 页面字段与配置流程
 
-入口：**网络 → MESH助手**（英文界面 **Network → Easy Mesh**）。
+入口：**网络 → MESH助手**（英文界面 **Network → Mesh Assistant**）。
 
 ### 2.1 基础设置
 
@@ -236,7 +236,7 @@ bash /meshassistant/meshassistant.sh undumb
 应用完成后刷新页面，顶部「Mesh 状态」显示：
 
 - 活动节点数；
-- 邻居节点、接口和最后发现时间。
+- 邻居节点、接口、邻居及其下游客户端的 IP 地址和最后发现时间。
 
 如果显示「无法读取 Mesh 状态」，说明 `batctl` 缺失或执行失败，而不是邻居数为 0。
 

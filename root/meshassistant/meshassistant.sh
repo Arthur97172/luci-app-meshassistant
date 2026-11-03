@@ -610,9 +610,18 @@ disable_apmode() {
     fi
 }
 
+# Remove mesh wireless sections that belong to a mesh_id which is no longer
+# used.  The optional second argument names one section to keep.
+#
+# enable_meshassistant() passes the 802.11s section of the selected radio when
+# the mesh_id does not change.  Deleting and recreating that section detaches
+# mesh_batman from its wireless device; netifd then reports the interface as
+# "no device", which LuCI shows as "Device: nonexistent".  setup_mesh_radio()
+# overwrites every option of the kept section anyway.
 clear_by_mesh_id() {
     # Passed mesh_id to clear, allows us to multipurpose this function
     MESH_ID_TO_CLEAR=$1
+    local keep_section="$2"
 
     # Get the radio to be used for mesh from the config
     AP_RADIO=$(uci -q get meshassistant.config.apRadio)
@@ -634,6 +643,10 @@ clear_by_mesh_id() {
         | grep -F -e "mesh_id='${MESH_ID_TO_CLEAR}-mesh'" -e "mesh_id='${MESH_ID_TO_CLEAR}'" \
         | cut -d. -f2 | sort -u)
     for section in $mesh_sections; do
+        if [ -n "$keep_section" ] && [ "$section" = "$keep_section" ]; then
+            echo "Keeping mesh network '$section' for reconfiguration."
+            continue
+        fi
         uci -q del "wireless.$section"
         echo "Deleted mesh network '$section' with mesh_id '$MESH_ID_TO_CLEAR'."
     done
@@ -647,6 +660,9 @@ clear_by_mesh_id() {
         | grep -F 'mesh_batman' \
         | cut -d. -f2 | sort -u)
     for section in $legacy_sections; do
+        if [ -n "$keep_section" ] && [ "$section" = "$keep_section" ]; then
+            continue
+        fi
         legacy_ssid=$(uci -q get "wireless.$section.ssid")
         case "$legacy_ssid" in
             "$MESH_ID_TO_CLEAR"|"$MESH_ID_TO_CLEAR-mesh")
@@ -659,12 +675,11 @@ clear_by_mesh_id() {
         esac
     done
 
-    # Commit changes to make sure the wireless configuration is updated
+    # Commit changes to make sure the wireless configuration is updated.
+    # The caller applies network and wireless once at the end (see
+    # apply_mesh_config); reloading here would briefly remove the wireless
+    # device that mesh_batman depends on.
     uci commit wireless
-
-    # Restart wireless to apply changes
-    wifi reload
-    echo "Wireless interfaces reloaded."
 }
 
 create_batman_network() {
@@ -810,14 +825,12 @@ create_batman_network() {
     # same kind of hardif for the wired link to become a batman-adv neighbor.
     apply_wired_backhaul
 
-    # Commit network and the recorded restore state.
+    # Commit network and the recorded restore state.  The reload is deferred
+    # to apply_mesh_config(): netifd then reads the new network and wireless
+    # configuration together instead of applying the network half before the
+    # 802.11s interface exists.
     uci commit network
     uci commit meshassistant
-
-    # Load bat0/mesh_batman into netifd before process_radios() creates the
-    # 802.11s interface.  Otherwise the wireless device can be brought up
-    # while netifd still has no mesh_batman interface to attach it to.
-    /etc/init.d/network reload
 
     echo "Network settings updated."
 }
@@ -910,10 +923,7 @@ setup_mesh_radio() {
             [ -z "$NETWORK_KEY" ] && echo "Encryption key is empty, so encryption was disabled."
         fi
 
-        # ?? Apply WiFi settings immediately
         uci commit wireless
-        wifi reload
-        sleep 2
     fi
 
     ###### Mesh AP Configuration (Set after regular AP is applied) ######
@@ -940,20 +950,21 @@ setup_mesh_radio() {
             uci set wireless.mesh_$CURRENT_RADIO.encryption='none'
         fi
 
-        # ?? Apply WiFi settings after Mesh AP is set
         uci commit wireless
-        wifi reload
-        sleep 2
     fi
-
-    ###### Final Restart of Network & Wireless ######
-    echo "Restarting WiFi and Network Services..."
-    /etc/init.d/network restart
-    /etc/init.d/wireless restart
 }
 
-restart_and_reload() {
-    # Get the radio to be used for mesh from the config
+# Apply the complete network and wireless configuration.
+#
+# This must stay non-destructive.  The script runs detached from LuCI, so the
+# user usually opens Network -> Interfaces while it is still working.  An
+# earlier version ran "/etc/init.d/network restart" and "wifi up" here; both
+# tear every wireless interface down and rebuild it, which removes the 802.11s
+# device that mesh_batman is bound to and makes LuCI report
+# "Device: nonexistent" until the radios come back.
+apply_mesh_config() {
+    local radio radios
+
     AP_RADIO=$(uci -q get meshassistant.config.apRadio)
 
     # Check if AP_RADIO is empty, if so exit
@@ -962,23 +973,24 @@ restart_and_reload() {
         exit 1
     fi
 
-    # Enable radios
-    for radio in $AP_RADIO; do
+    # Enable the mesh radio and the regular AP radio.  They are usually two
+    # different radios; enabling only apRadio left the AP radio disabled.
+    radios="$AP_RADIO $(uci -q get meshassistant.config.wifi_radio)"
+    for radio in $radios; do
+        [ -n "$radio" ] || continue
         echo "Enabling $radio..."
         uci set wireless.$radio.disabled=0
     done
 
     uci commit wireless
 
-    # Reload wifi to apply changes without restarting all interfaces
-    wifi up
-    echo "Wireless interfaces reloaded."
-
-    # Apply network configuration changes
-    reload_config
-    echo "Network configuration reloaded."
-
+    # netifd reads /etc/config/network first, so bat0 and mesh_batman exist
+    # before the 802.11s interface is created and attached to mesh_batman.
+    # reload_config then applies the firewall, DHCP and system changes.
     /etc/init.d/network reload
+    wifi reload
+    reload_config
+    echo "Mesh configuration applied."
 }
 
 disable_batman_interfaces() {
@@ -1011,13 +1023,15 @@ enable_meshassistant() {
         exit 1
     fi
 
-    # Clear old radios then set "old values"
-    clear_by_mesh_id "$(uci -q get meshassistant.config.mesh_id)"
-    clear_by_mesh_id "$(uci -q get meshassistant.config.old_mesh_id)"
+    # Clear stale wireless sections, but keep the section of the selected
+    # radio so its wireless device never disappears.  process_radios()
+    # rewrites all of its options in place.
+    clear_by_mesh_id "$(uci -q get meshassistant.config.mesh_id)" "mesh_$AP_RADIO"
+    clear_by_mesh_id "$(uci -q get meshassistant.config.old_mesh_id)" "mesh_$AP_RADIO"
     uci set meshassistant.config.old_mesh_id="$(uci -q get meshassistant.config.mesh_id)"
     create_batman_network
     process_radios
-    restart_and_reload
+    apply_mesh_config
     # Set at end to be sure it worked
     uci set meshassistant.config.running=1
     uci commit meshassistant
@@ -1058,6 +1072,7 @@ disable_meshassistant() {
 
     reload_config
     /etc/init.d/network reload
+    wifi reload
 
     # Set at end to be sure it worked
     uci -q del meshassistant.config.running

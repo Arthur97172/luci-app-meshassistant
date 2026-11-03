@@ -4,7 +4,7 @@
 
 一个面向 OpenWrt / ImmortalWrt 的 Batman-adv Mesh 配置页面。在 LuCI 中选好角色、填写 SSID 与密码，点一下按钮即可把本机配置为 Mesh 服务器、节点或客户端；页面同时显示当前邻居节点状态。界面完全使用 JavaScript 实现，不依赖 `luci-compat`、`luci-lua-runtime` 或 `libiwinfo-lua`。
 
-插件位于 **网络 → MESH助手**（`admin/network/meshassistant`；英文界面为 **Network → Easy Mesh**），页面标题为「MESH助手 WiFi 设置」。
+插件位于 **网络 → MESH助手**（`admin/network/meshassistant`；英文界面为 **Network → Mesh Assistant**），页面标题为「MESH助手 WiFi 设置」。
 
 > **详细配置指南**：角色差异、节点/客户端何时需要静态 IP、DHCP 复用、有线回程、哑 AP、排错方法，以及 2–3 台无线路由器组网的完整示例，见
 > [info/README.md](info/README.md)（简体中文） / [info/README.en.md](info/README.en.md)（English）。
@@ -16,8 +16,8 @@
 | 三种角色 | 服务器（Server，作为网关）、节点（Node）、客户端（Client） |
 | 普通 AP + Mesh 回程 | 普通 WiFi 与 Mesh 回程可以分别选择射频；Mesh 射频为单选 |
 | 有线回程 | 可选择专用一个 LAN 口作为 Mesh 有线回程：插网线时使用有线，拔掉后自动改用 Mesh 无线 |
-| Mesh 状态 | 读取 `batctl n`，显示活动节点数、接口、邻居节点和最后发现时间 |
-| 后台应用 | 应用设置时脚本脱离页面在后台执行，避免 WiFi / 网络重启导致请求超时或页面掉线 |
+| Mesh 状态 | 读取 `batctl n` 及 Batman-adv 的转换表 / DAT 缓存，显示活动节点数、接口、邻居节点、邻居及其下游客户端的 IP 地址和最后发现时间 |
+| 后台应用 | 应用设置时脚本脱离页面在后台执行，并只做非破坏性的网络 / 无线重载，避免请求超时或页面掉线 |
 | Dumb AP 模式 | 把节点切换为接入现有网络的哑 AP（会更换管理地址，操作前有确认对话框） |
 | DHCP 可复用 | 服务器可选择是否提供 DHCP/IPv6 RA；LAN 上已有 DHCP 服务器时可关闭 |
 | 国际化 | 支持英文与简体中文；中文以独立语言包提供 |
@@ -50,7 +50,7 @@
 
 3. 刷新 LuCI，入口出现在「网络 → MESH助手」。
 
-> 未安装语言包时界面显示英文（菜单为「Easy Mesh」）。安装包架构无关（ipk 记为 `all`，apk 记为 `noarch`），ARM / x86 / MIPS 等平台通用；`batctl`、`kmod-batman-adv` 等依赖由软件源提供。
+> 未安装语言包时界面显示英文（菜单为「Mesh Assistant」）。安装包架构无关（ipk 记为 `all`，apk 记为 `noarch`），ARM / x86 / MIPS 等平台通用；`batctl`、`kmod-batman-adv` 等依赖由软件源提供。
 
 ### 从源码编译
 

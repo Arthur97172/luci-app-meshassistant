@@ -1,4 +1,4 @@
-# Easy Mesh Detailed Configuration Guide
+# Mesh Assistant Detailed Configuration Guide
 
 English | [简体中文](README.md)
 
@@ -58,7 +58,7 @@ Applying settings restarts networking and wireless. Therefore:
 
 ## 2. Page fields and workflow
 
-Menu entry: **Network → Easy Mesh** (Chinese: **网络 → MESH助手**).
+Menu entry: **Network → Mesh Assistant** (Chinese: **网络 → MESH助手**).
 
 ### 2.1 Basic Setup
 
@@ -236,7 +236,7 @@ The current configuration is moved to `/etc/config/*.dumbap` for reference, the 
 After applying, refresh the page. **Mesh Status** at the top shows:
 
 - the number of active nodes;
-- neighbour nodes, interface and last-seen time.
+- neighbour nodes, interface, the IP addresses of each neighbour and its clients, and last-seen time.
 
 If it shows **Unable to read mesh status**, `batctl` is missing or failing; this is not the same as zero neighbours.
 

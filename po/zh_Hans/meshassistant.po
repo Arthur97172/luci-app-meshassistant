@@ -37,10 +37,10 @@ msgstr "DHCP"
 msgid "DNS Server"
 msgstr "DNS 服务器"
 
-msgid "Easy Mesh"
+msgid "Mesh Assistant"
 msgstr "MESH助手"
 
-msgid "Easy Mesh WiFi Setup"
+msgid "Mesh Assistant WiFi Setup"
 msgstr "MESH助手 WiFi 设置"
 
 msgid "Enable Dumb AP Mode"
@@ -63,6 +63,9 @@ msgstr "请先设置 Mesh 网关服务器，再设置节点。配置 Mesh 节点
 
 msgid "Good RSSI Threshold"
 msgstr "良好 RSSI 阈值"
+
+msgid "IP Address"
+msgstr "IP 地址"
 
 msgid "IPv4 netmask"
 msgstr "IPv4 子网掩码"
