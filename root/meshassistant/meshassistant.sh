@@ -1076,7 +1076,7 @@ mesh_hardif_macs() {
 }
 
 announce_identity() {
-    local ip brd hostname mac
+    local ip brd hostname load mac
     ip=$(lan_ipv4)
     [ -n "$ip" ] || return 0
 
@@ -1088,17 +1088,28 @@ announce_identity() {
     hostname=$(printf '%s' "$hostname" | tr -cd 'A-Za-z0-9._-')
     [ -n "$hostname" ] || hostname='-'
 
+    # Version 2 appends the 1-minute load average.  Older receivers drop
+    # unknown versions, so they never mistake the extra field for a hostname.
+    load=$(cut -d' ' -f1 /proc/loadavg 2>/dev/null)
+    case "$load" in
+        ''|*[!0-9.]*|*.*.*) load='-' ;;
+    esac
+
     for mac in $(mesh_hardif_macs); do
-        printf 'meshassistant/1 %s %s %s\n' "$mac" "$ip" "$hostname" \
+        printf 'meshassistant/2 %s %s %s %s\n' "$mac" "$ip" "$hostname" "$load" \
             | socat -u - "UDP-DATAGRAM:$brd:$MESHASSISTANT_PORT,broadcast" 2>/dev/null
     done
 }
 
 # Called by socat for every received datagram; the datagram is on stdin.
 record_peer() {
-    local proto mac ip hostname ts
-    read -r proto mac ip hostname || true
-    [ "$proto" = "meshassistant/1" ] || return 0
+    local proto mac ip hostname load ts
+    read -r proto mac ip hostname load || true
+    case "$proto" in
+        meshassistant/1) load='' ;;
+        meshassistant/2) ;;
+        *) return 0 ;;
+    esac
 
     mac=$(printf '%s' "$mac" | tr 'A-F' 'a-f')
     case "$mac" in
@@ -1114,8 +1125,13 @@ record_peer() {
     hostname=$(printf '%s' "$hostname" | tr -cd 'A-Za-z0-9._-')
     [ -n "$hostname" ] || hostname='-'
 
+    load=$(printf '%s' "$load" | tr -cd '0-9.')
+    case "$load" in
+        ''|*.*.*) load='' ;;
+    esac
+
     ts=$(date +%s)
-    printf '%s %s %s %s\n' "$ts" "$mac" "${ip:--}" "$hostname" \
+    printf '%s %s %s %s %s\n' "$ts" "$mac" "${ip:--}" "$hostname" "${load:--}" \
         >> "$MESHASSISTANT_PEERS"
 }
 
@@ -1157,12 +1173,13 @@ daemon_meshassistant() {
     done
 }
 
-# Frequency and signal of the active mesh links.  "batctl n" only reports the
-# MAC of the hardif that carries each link; the radio driver knows the channel
-# of the hardif and the signal of each station.  Print one value per line so
-# the LuCI view can merge it with the neighbor rows without parsing iw's
-# multi-line output:
+# Frequency, channel utilization and signal of the active mesh links.  "batctl
+# n" only reports the MAC of the hardif that carries each link; the radio driver
+# knows the channel, its busy time and the signal of each station.  Print one
+# value per line so the LuCI view can merge it with the neighbor rows without
+# parsing iw's multi-line output:
 #   iface <hardif> <MHz>
+#   busy <hardif> <percent>
 #   peer <hardif> <MAC> <dBm>
 link_info() {
     command -v iw >/dev/null 2>&1 || return 0
@@ -1175,6 +1192,16 @@ link_info() {
                 | sed -n 's/.*channel [0-9][0-9]* (\([0-9][0-9]*\) MHz).*/\1/p' \
                 | head -n 1)
             [ -n "$freq" ] && printf 'iface %s %s\n' "$iface" "$freq"
+            busy=$(iw dev "$iface" survey dump 2>/dev/null | awk '
+                /^[[:space:]]*frequency:/ { inuse = ($0 ~ /\[in use\]/); next }
+                inuse && /channel active time:/ { active = $4 }
+                inuse && /channel busy time:/ { busy = $4 }
+                END {
+                    if (active + 0 > 0)
+                        printf "%.0f", busy * 100 / active
+                }
+            ')
+            [ -n "$busy" ] && printf 'busy %s %s\n' "$iface" "$busy"
             iw dev "$iface" station dump 2>/dev/null \
                 | awk -v iface="$iface" '
                     /^Station / { mac = $2; next }

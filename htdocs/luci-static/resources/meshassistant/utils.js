@@ -287,9 +287,10 @@ return baseclass.extend({
 	},
 
 	// Peer announcements written by the daemon.  Each line is
-	// "<epoch> <mesh MAC> <IPv4|-> <hostname>".  The age is measured against
-	// the newest entry in the file, not the browser clock: a router without
-	// NTP can have a clock that is far from the browser's.
+	// "<epoch> <mesh MAC> <IPv4|-> <hostname> <load|->".  The load field is
+	// missing in lines written before version 2 of the announcement.  The age
+	// is measured against the newest entry in the file, not the browser clock:
+	// a router without NTP can have a clock that is far from the browser's.
 	parsePeers(text, maxAge) {
 		const entries = [];
 		const limit = maxAge == null ? 120 : Number(maxAge);
@@ -309,12 +310,13 @@ return baseclass.extend({
 			const time = Number(parts[0]);
 			const mac = this.macKey(parts[1]);
 			const ip = parts[2] === '-' ? '' : this.ipv4(parts[2]);
-			const hostname = clean(parts.slice(3).join(' '));
+			const hostname = clean(parts[3]);
+			const load = /^\d+(\.\d+)?$/.test(clean(parts[4])) ? clean(parts[4]) : '';
 
 			if (!Number.isFinite(time) || !mac || !hostname)
 				continue;
 
-			entries.push({ time: time, mac: mac, ip: ip, hostname: hostname });
+			entries.push({ time: time, mac: mac, ip: ip, hostname: hostname, load: load });
 
 			if (latest == null || time > latest)
 				latest = time;
@@ -349,6 +351,7 @@ return baseclass.extend({
 			const peer = mac ? latest[mac] : null;
 
 			row.hostname = peer ? peer.hostname : '';
+			row.load = peer ? (peer.load || '') : '';
 
 			if (!Array.isArray(row.ips))
 				row.ips = [];
@@ -384,6 +387,17 @@ return baseclass.extend({
 					links[iface] = {};
 				links[iface].frequency = frequency;
 			}
+			else if (parts[0] === 'busy' && parts.length >= 3) {
+				const iface = clean(parts[1]);
+				const busy = Number(parts[2]);
+
+				if (!iface || !Number.isFinite(busy) || busy < 0 || busy > 100)
+					continue;
+
+				if (!links[iface])
+					links[iface] = {};
+				links[iface].busy = Math.round(busy);
+			}
 			else if (parts[0] === 'peer' && parts.length >= 4) {
 				const iface = clean(parts[1]);
 				const mac = this.macKey(parts[2]);
@@ -403,9 +417,10 @@ return baseclass.extend({
 		return links;
 	},
 
-	// Attach the radio frequency and the peer signal to every neighbor row.
-	// Both depend on the hardif named by "batctl n": a wired backhaul has no
-	// channel and no station signal, so those cells stay empty.
+	// Attach the radio frequency, channel utilization and the peer signal to
+	// every neighbor row.  All three depend on the hardif named by "batctl n":
+	// a wired backhaul has no channel and no station signal, so those cells
+	// stay empty.
 	annotateLinks(rows, links) {
 		links = links || {};
 
@@ -416,6 +431,7 @@ return baseclass.extend({
 			const signal = mac && link.signals ? link.signals[mac] : null;
 
 			row.frequency = link.frequency ? link.frequency + ' MHz' : '';
+			row.channel = link.busy == null ? '' : link.busy + '%';
 			row.signal = signal == null ? '' : signal + ' dBm';
 		}
 

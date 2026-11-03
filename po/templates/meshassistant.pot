@@ -20,6 +20,9 @@ msgstr ""
 msgid "Cancel"
 msgstr ""
 
+msgid "Channel Utilization"
+msgstr ""
+
 msgid "Choose if the node uses DHCP or a Static IP"
 msgstr ""
 
@@ -53,9 +56,6 @@ msgstr ""
 msgid "Failed to apply mesh settings: %s"
 msgstr ""
 
-msgid "First set up the Mesh gateway server, then set up the nodes. When configuring a Mesh node, first enable Mesh WiFi on the radio device and establish a connection, then enable it as a DHCP node. The default settings are usually sufficient for most Mesh WiFi configurations."
-msgstr ""
-
 msgid "Frequency"
 msgstr ""
 
@@ -84,6 +84,12 @@ msgid "Last Seen Timestamp"
 msgstr ""
 
 msgid "Leave these settings as default unless you know what you are doing."
+msgstr ""
+
+msgid "Link Rate"
+msgstr ""
+
+msgid "Load"
 msgstr ""
 
 msgid "Mesh Gateway IP Address"

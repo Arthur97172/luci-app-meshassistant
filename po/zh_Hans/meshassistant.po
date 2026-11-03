@@ -22,6 +22,9 @@ msgstr "基础设置"
 msgid "Cancel"
 msgstr "取消"
 
+msgid "Channel Utilization"
+msgstr "信道占用率"
+
 msgid "Choose if the node uses DHCP or a Static IP"
 msgstr "选择节点使用 DHCP 还是静态 IP"
 
@@ -55,9 +58,6 @@ msgstr "确保 Mesh 网络中所有服务器/节点使用相同的 SSID。"
 msgid "Failed to apply mesh settings: %s"
 msgstr "应用 Mesh 设置失败：%s"
 
-msgid "First set up the Mesh gateway server, then set up the nodes. When configuring a Mesh node, first enable Mesh WiFi on the radio device and establish a connection, then enable it as a DHCP node. The default settings are usually sufficient for most Mesh WiFi configurations."
-msgstr "请先设置 Mesh 网关服务器，再设置节点。配置 Mesh 节点时，请先在射频设备上启用 Mesh WiFi 并建立连接，然后将其启用为 DHCP 节点。对于大多数 Mesh WiFi 配置，默认设置通常已足够。"
-
 msgid "Frequency"
 msgstr "频率"
 
@@ -87,6 +87,12 @@ msgstr "最后发现时间"
 
 msgid "Leave these settings as default unless you know what you are doing."
 msgstr "除非你了解相关设置，否则请保持默认值。"
+
+msgid "Link Rate"
+msgstr "链路速率"
+
+msgid "Load"
+msgstr "负载"
 
 msgid "Mesh Gateway IP Address"
 msgstr "Mesh 网关 IP 地址"

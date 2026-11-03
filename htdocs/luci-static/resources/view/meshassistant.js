@@ -125,6 +125,9 @@ function renderStatus(status) {
 				E('div', { 'class': 'th' }, [ _('Interface') ]),
 				E('div', { 'class': 'th' }, [ _('Frequency') ]),
 				E('div', { 'class': 'th' }, [ _('Signal Strength') ]),
+				E('div', { 'class': 'th' }, [ _('Load') ]),
+				E('div', { 'class': 'th' }, [ _('Channel Utilization') ]),
+				E('div', { 'class': 'th' }, [ _('Link Rate') ]),
 				E('div', { 'class': 'th' }, [ _('Last Seen Timestamp') ])
 			])
 		]);
@@ -139,6 +142,9 @@ function renderStatus(status) {
 				E('div', { 'class': 'td' }, [ row.iface || '-' ]),
 				E('div', { 'class': 'td' }, [ row.frequency || '-' ]),
 				E('div', { 'class': 'td' }, [ row.signal || '-' ]),
+				E('div', { 'class': 'td' }, [ row.load || '-' ]),
+				E('div', { 'class': 'td' }, [ row.channel || '-' ]),
+				E('div', { 'class': 'td' }, [ row.speed ? row.speed + ' Mbps' : '-' ]),
 				E('div', { 'class': 'td' }, [ row.lastSeen ])
 			]));
 		}
@@ -205,11 +211,6 @@ return view.extend({
 
 	render() {
 		const statusEl = renderStatus(this.status);
-		const hintEl = E('div', { 'class': 'cbi-map-descr' }, [
-			E('p', {}, [
-				_('First set up the Mesh gateway server, then set up the nodes. When configuring a Mesh node, first enable Mesh WiFi on the radio device and establish a connection, then enable it as a DHCP node. The default settings are usually sufficient for most Mesh WiFi configurations.')
-			])
-		]);
 
 		const m = new form.Map('meshassistant');
 		const s = m.section(form.TypedSection, 'meshassistant', _('Mesh Settings'));
@@ -367,7 +368,7 @@ return view.extend({
 			 */
 			const tabsEl = E('div', { 'style': 'margin-block-start: 0.5rem' },
 				[ settingsEl, statusPane ]);
-			const pageEl = E('div', {}, [ hintEl, tabsEl ]);
+			const pageEl = E('div', {}, [ tabsEl ]);
 
 			ui.tabs.initTabGroup(tabsEl.childNodes);
 
