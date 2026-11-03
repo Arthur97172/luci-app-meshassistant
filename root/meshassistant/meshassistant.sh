@@ -857,6 +857,10 @@ process_radios() {
         exit 1
     fi
 
+    # The regular AP sections are shared by all mesh radios, so create them
+    # once instead of repeating the work for every mesh radio below.
+    setup_ap_radios
+
     # Loop through the selected radios
     for CURRENT_RADIO in $AP_RADIO; do
         echo "Setting up mesh networks for: $CURRENT_RADIO"
@@ -864,24 +868,86 @@ process_radios() {
     done
 }
 
-# This is called from the process_radios function and is passed the radio to be used for mesh
-setup_mesh_radio() {
-    echo "Setting up radios for Mesh and Regular WiFi"
+# Configure one regular WiFi AP per selected radio.  Every selected radio uses
+# the same SSID, key and KVR settings, so clients see a single WiFi network on
+# both bands and can roam between them.
+setup_ap_radios() {
+    local radio managed
 
-    local CURRENT_RADIO="$1"
-
-    # Get the regular WiFi SSID and radio from the config
     WIFI_ID=$(uci -q get meshassistant.config.wifi_id)
-    WIFI_RADIO=$(uci -q get meshassistant.config.wifi_radio)
+    WIFI_RADIOS=$(uci -q get meshassistant.config.wifi_radio)
+    ENCRYPTION_ENABLED=$(uci -q get meshassistant.config.encryption)
+    NETWORK_KEY=$(uci -q get meshassistant.config.key)
+    MOBILITY_DOMAIN=$(uci -q get meshassistant.config.mobility_domain)
 
-    # Get the mesh name from the config
-    MESH_ID=$(uci -q get meshassistant.config.mesh_id)
-
-    # Ensure both SSIDs are set
     if [ -z "$WIFI_ID" ]; then
         echo "Regular WiFi SSID is empty. Using default."
         WIFI_ID="meshassistant_AC"
     fi
+
+    # If mobility domain is empty, generate a random 4-digit hex
+    if [ -z "$MOBILITY_DOMAIN" ]; then
+        MOBILITY_DOMAIN=$(hexdump -n 2 -e '2/1 "%02x"' /dev/urandom)
+        uci set meshassistant.config.mobility_domain=$MOBILITY_DOMAIN
+    fi
+
+    for radio in $WIFI_RADIOS; do
+        echo "Configuring regular WiFi AP on $radio"
+
+        uci set wireless.wifi_ap_$radio='wifi-iface'
+        uci set wireless.wifi_ap_$radio.device="$radio"
+        uci set wireless.wifi_ap_$radio.mode='ap'
+        uci set wireless.wifi_ap_$radio.ssid="$WIFI_ID"
+        uci set wireless.wifi_ap_$radio.network='lan'
+        uci set wireless.wifi_ap_$radio.ieee80211r='1'
+        uci set wireless.wifi_ap_$radio.mobility_domain=$MOBILITY_DOMAIN
+        uci set wireless.wifi_ap_$radio.ft_over_ds='0'
+        uci set wireless.wifi_ap_$radio.ft_psk_generate_local='0'
+        uci set wireless.wifi_ap_$radio.disabled=0
+
+        # Apply encryption settings for regular WiFi
+        if [ "$ENCRYPTION_ENABLED" = 1 ] && [ ! -z "$NETWORK_KEY" ]; then
+            uci set wireless.wifi_ap_$radio.encryption='sae-mixed'
+            uci set wireless.wifi_ap_$radio.key=$NETWORK_KEY
+        else
+            uci set wireless.wifi_ap_$radio.encryption='none'
+            [ -z "$NETWORK_KEY" ] && echo "Encryption key is empty, so encryption was disabled."
+        fi
+    done
+
+    # Remove AP sections that this plugin managed on an earlier run but that
+    # are no longer selected.  Only radios recorded in ap_radios_managed are
+    # considered, so a user-created wifi_ap_* section is never deleted.
+    managed=$(uci -q get meshassistant.config.ap_radios_managed)
+    for radio in $managed; do
+        case " $WIFI_RADIOS " in
+            *" $radio "*) continue ;;
+        esac
+        if [ "$(uci -q get wireless.wifi_ap_$radio.mode)" = "ap" ]; then
+            uci -q del "wireless.wifi_ap_$radio"
+            echo "Deleted stale regular WiFi AP '$radio'."
+        fi
+    done
+
+    # Remember exactly which radios are managed by this plugin.
+    uci -q del meshassistant.config.ap_radios_managed
+    for radio in $WIFI_RADIOS; do
+        uci add_list meshassistant.config.ap_radios_managed="$radio"
+    done
+
+    uci commit meshassistant
+    uci commit wireless
+}
+
+# This is called from the process_radios function and is passed the radio to be used for mesh
+setup_mesh_radio() {
+    echo "Setting up mesh network"
+
+    local CURRENT_RADIO="$1"
+
+    # Get the mesh name from the config
+    MESH_ID=$(uci -q get meshassistant.config.mesh_id)
+
     if [ -z "$MESH_ID" ]; then
         echo "Error: Mesh SSID is empty. Cannot configure mesh."
         return
@@ -894,51 +960,13 @@ setup_mesh_radio() {
     # Generate Mesh AP SSID by appending '-mesh'
     MESH_SSID="${MESH_ID}-mesh"
 
-    echo "Regular AP SSID: $WIFI_ID on $WIFI_RADIO"
     echo "Mesh SSID: $MESH_SSID on $CURRENT_RADIO"
-
-    # Get the mobility domain from the config
-    MOBILITY_DOMAIN=$(uci -q get meshassistant.config.mobility_domain)
-
-    # If mobility domain is empty, generate a random 4-digit hex
-    if [ -z "$MOBILITY_DOMAIN" ]; then
-        MOBILITY_DOMAIN=$(hexdump -n 2 -e '2/1 "%02x"' /dev/urandom)
-        uci set meshassistant.config.mobility_domain=$MOBILITY_DOMAIN
-        uci commit meshassistant
-    fi
 
     # Get encryption settings
     ENCRYPTION_ENABLED=$(uci -q get meshassistant.config.encryption)
     NETWORK_KEY=$(uci -q get meshassistant.config.key)
 
-    ###### Regular WiFi AP Configuration (Set first, then apply WiFi) ######
-    if [ ! -z "$WIFI_RADIO" ]; then
-        echo "Configuring regular WiFi AP on $WIFI_RADIO"
-
-        uci set wireless.wifi_ap_$WIFI_RADIO='wifi-iface'
-        uci set wireless.wifi_ap_$WIFI_RADIO.device="$WIFI_RADIO"
-        uci set wireless.wifi_ap_$WIFI_RADIO.mode='ap'
-        uci set wireless.wifi_ap_$WIFI_RADIO.ssid="$WIFI_ID"
-        uci set wireless.wifi_ap_$WIFI_RADIO.network='lan'
-        uci set wireless.wifi_ap_$WIFI_RADIO.ieee80211r='1'
-        uci set wireless.wifi_ap_$WIFI_RADIO.mobility_domain=$MOBILITY_DOMAIN
-        uci set wireless.wifi_ap_$WIFI_RADIO.ft_over_ds='0'
-        uci set wireless.wifi_ap_$WIFI_RADIO.ft_psk_generate_local='0'
-        uci set wireless.wifi_ap_$WIFI_RADIO.disabled=0  # ?? Force-enable AP
-
-        # Apply encryption settings for regular WiFi
-        if [ "$ENCRYPTION_ENABLED" = 1 ] && [ ! -z "$NETWORK_KEY" ]; then
-            uci set wireless.wifi_ap_$WIFI_RADIO.encryption='sae-mixed'
-            uci set wireless.wifi_ap_$WIFI_RADIO.key=$NETWORK_KEY
-        else
-            uci set wireless.wifi_ap_$WIFI_RADIO.encryption='none'
-            [ -z "$NETWORK_KEY" ] && echo "Encryption key is empty, so encryption was disabled."
-        fi
-
-        uci commit wireless
-    fi
-
-    ###### Mesh AP Configuration (Set after regular AP is applied) ######
+    ###### Mesh AP Configuration ######
     if [ ! -z "$CURRENT_RADIO" ]; then
         echo "Configuring Mesh AP on $CURRENT_RADIO"
 

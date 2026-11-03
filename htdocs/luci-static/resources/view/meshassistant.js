@@ -28,6 +28,20 @@ function radioOptions(devices) {
 }
 
 /*
+ * Normalize a UCI option that may be a list or a legacy single string.
+ * LuCI returns an array for UCI lists and a string for plain options.
+ */
+function listValues(value) {
+	if (value == null)
+		return [];
+
+	if (Array.isArray(value))
+		return value.filter(Boolean);
+
+	return String(value).trim().split(/\s+/).filter(Boolean);
+}
+
+/*
  * Ethernet ports that can be dedicated to wired backhaul.  Only ports of the
  * LAN bridge are offered; ports owned by another logical interface (usually
  * the WAN uplink) are skipped because netifd cannot use the same device for
@@ -169,6 +183,7 @@ function runScript(args) {
 
 return view.extend({
 	radios: [],
+	apRadios: [],
 	wiredPorts: [],
 	status: { ok: true, rows: [] },
 	lanDefaults: { ipaddr: '', netmask: '', gateway: '', dns: '' },
@@ -195,6 +210,15 @@ return view.extend({
 				: uci.sections('wireless', 'wifi-device').map(function(s) {
 					return [ s['.name'], s['.name'] ];
 				});
+
+			/*
+			 * The regular AP may use up to two radios so the same WiFi
+			 * network is served on any two of 2.4 GHz, 5 GHz and 6 GHz.
+			 * Wi-Fi 6E is WPA3-only, so hostapd starts the 6 GHz radio with
+			 * SAE even though the AP encryption is WPA2/WPA3 mixed.  A radio
+			 * with no band information is kept for older configurations.
+			 */
+			this.apRadios = this.radios;
 
 			this.wiredPorts = wiredPortOptions();
 
@@ -240,10 +264,34 @@ return view.extend({
 		o = s.taboption('setup', form.Value, 'wifi_id', _('WiFi Network SSID'), _('SSID for the regular WiFi network.'));
 		o.default = 'meshassistant_AC';
 
-		o = s.taboption('setup', form.ListValue, 'wifi_radio', _('Regular AP Radio'), _('Select the radio to be used for the regular WiFi access point.'));
-		for (const [ value, label ] of this.radios)
+		o = s.taboption('setup', form.MultiValue, 'wifi_radio', _('Regular AP Radio'), _('Select one or two radios (2.4 GHz, 5 GHz and 6 GHz) for the regular WiFi access point. All selected radios use the same SSID.'));
+
+		for (const [ value, label ] of this.apRadios)
 			o.value(value, label);
+
+		/*
+		 * Keep a radio that is already saved even if it is no longer offered
+		 * (for example a radio that is no longer present), so opening and
+		 * saving the page cannot silently drop it.
+		 */
+		for (const value of listValues(uci.get('meshassistant', 'config', 'wifi_radio'))) {
+			if (this.apRadios.some(function(choice) { return choice[0] === value; }))
+				continue;
+
+			const known = this.radios.find(function(choice) { return choice[0] === value; });
+			o.value(value, known ? known[1] : value);
+		}
+
 		o.default = 'radio1';
+		o.rmempty = false;
+		o.validate = function(section_id, value) {
+			const count = listValues(value).length;
+
+			if (count === 0)
+				return _('Select at least one radio.');
+
+			return count <= 2 || _('Select at most two radios.');
+		};
 
 		o = s.taboption('setup', form.ListValue, 'apRadio', _('Mesh Radio'), _('Select one radio interface for mesh backhaul traffic.'));
 		for (const [ value, label ] of this.radios)

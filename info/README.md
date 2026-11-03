@@ -68,7 +68,7 @@ cp /etc/config/network /etc/config/wireless /etc/config/dhcp \
 | Mesh 模式 | 服务器 / 节点 / 客户端。 |
 | 服务器提供 DHCP | 仅服务器显示。开启时由服务器提供 DHCP 和 IPv6 RA；LAN 上已有其他 DHCP 服务器时关闭。 |
 | WiFi 网络 SSID | 普通 WiFi 接入点的名称。 |
-| 普通 AP 射频 | 承载普通 WiFi 的射频。 |
+| 普通 AP 射频 | 承载普通 WiFi 的射频。可从 2.4 GHz、5 GHz、6 GHz 中选择最多两个射频，所选射频使用同一个 WiFi 网络 SSID；6 GHz 按 WPA3 启动。 |
 | Mesh 射频 | 承载 Mesh 回程的射频，单选。所有设备必须选同一个射频。 |
 | 有线回程端口 | 可选。选择与另一台 Mesh 设备相连的 LAN 网桥端口；纯无线回程保持「无」。 |
 | Mesh 网络 SSID | Mesh 回程的标识，所有设备必须完全一致。实际 802.11s 的 `mesh_id` 会自动加上 `-mesh` 后缀，例如填写 `MyMesh` 时空中看到的是 `MyMesh-mesh`。 |

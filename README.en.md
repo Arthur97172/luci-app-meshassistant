@@ -23,7 +23,7 @@ The package lives under **Network → Mesh Assistant**
 | Feature | Description |
 | --- | --- |
 | Three roles | Server (gateway), Node and Client |
-| Regular AP + mesh backhaul | Separate radios for the regular WiFi AP and the mesh backhaul; the mesh radio is single-select |
+| Regular AP + mesh backhaul | The regular WiFi can use up to two of 2.4 GHz, 5 GHz and 6 GHz with the same SSID, while the mesh backhaul picks its own radio; the mesh radio is single-select |
 | Wired backhaul | Optionally dedicate one LAN port to the mesh: wired is used while the cable is connected, and the mesh radio takes over when it is not |
 | Mesh status | Reads `batctl n`, `iw` plus the Batman-adv translation table and DAT cache, and shows the active node count, interface, neighbor nodes, the IP addresses of each neighbor and its clients, signal strength, load, channel utilization, link rate and the last-seen time |
 | Background apply | The script detaches from the page and only performs non-destructive network/wireless reloads, so the request cannot time out or drop the browser |
@@ -84,8 +84,10 @@ and `luci-i18n-meshassistant-zh-cn` are produced together.
 1. Open **Network → Mesh Assistant** and decide whether this device is the
    **Server** or a **Node**. There should be exactly one server per mesh.
 2. In **Basic Setup**, choose the role and fill in the WiFi Network SSID,
-   Regular AP Radio, Mesh Radio, Mesh Network SSID and password. Every device
-   must use the same mesh radio, mesh SSID and password.
+   Regular AP Radio, Mesh Radio, Mesh Network SSID and password. The Regular AP
+   Radio field accepts up to two of 2.4 GHz, 5 GHz and 6 GHz; all selected
+   radios use the same WiFi Network SSID. Every device must use the same mesh
+   radio, mesh SSID and password.
 3. For a Node or Client, open **AP Mode** and set the hostname and IP: use DHCP
    when a DHCP server exists on the LAN, or a static IP when there is none or
    you need a stable management address.

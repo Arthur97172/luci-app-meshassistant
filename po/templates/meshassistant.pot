@@ -146,13 +146,19 @@ msgstr ""
 msgid "Reapply meshassistant Settings"
 msgstr ""
 
+msgid "Select at least one radio."
+msgstr ""
+
+msgid "Select at most two radios."
+msgstr ""
+
+msgid "Select one or two radios (2.4 GHz, 5 GHz and 6 GHz) for the regular WiFi access point. All selected radios use the same SSID."
+msgstr ""
+
 msgid "Select one radio interface for mesh backhaul traffic."
 msgstr ""
 
 msgid "Select the Ethernet port cabled to another Mesh device. The port is dedicated to wired backhaul and removed from the LAN bridge. Wired is used while the cable is connected; the Mesh radio is used when it is not. Choose None for wireless-only backhaul."
-msgstr ""
-
-msgid "Select the radio to be used for the regular WiFi access point."
 msgstr ""
 
 msgid "Server"

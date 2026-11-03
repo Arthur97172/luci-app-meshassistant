@@ -148,14 +148,20 @@ msgstr "普通 AP 射频"
 msgid "Reapply meshassistant Settings"
 msgstr "重新应用 MESH助手设置"
 
+msgid "Select at least one radio."
+msgstr "请至少选择一个射频。"
+
+msgid "Select at most two radios."
+msgstr "最多选择两个射频。"
+
+msgid "Select one or two radios (2.4 GHz, 5 GHz and 6 GHz) for the regular WiFi access point. All selected radios use the same SSID."
+msgstr "选择用于普通 WiFi 接入点的一个或两个射频（2.4 GHz、5 GHz 与 6 GHz），所选射频使用相同的 SSID。"
+
 msgid "Select one radio interface for mesh backhaul traffic."
 msgstr "选择一个用于 Mesh 回程流量的射频接口。"
 
 msgid "Select the Ethernet port cabled to another Mesh device. The port is dedicated to wired backhaul and removed from the LAN bridge. Wired is used while the cable is connected; the Mesh radio is used when it is not. Choose None for wireless-only backhaul."
 msgstr "选择连接到另一台 Mesh 设备的以太网端口。该端口将专用于有线回程并从 LAN 网桥中移除。网线连接时使用有线回程；未连接时使用 Mesh 射频。仅使用无线回程请选择“无”。"
-
-msgid "Select the radio to be used for the regular WiFi access point."
-msgstr "选择用于普通 WiFi 接入点的射频。"
 
 msgid "Server"
 msgstr "服务器"

@@ -68,7 +68,7 @@ Menu entry: **Network → Mesh Assistant** (Chinese: **网络 → MESH助手**).
 | Mesh Mode | Server / Node / Client. |
 | Server Provides DHCP | Server only. When enabled, the server provides DHCP and IPv6 RA. Disable it when another router on the LAN already provides DHCP. |
 | WiFi Network SSID | Name of the regular WiFi access point. |
-| Regular AP Radio | Radio that carries the regular WiFi. |
+| Regular AP Radio | Radio that carries the regular WiFi. Up to two of 2.4 GHz, 5 GHz and 6 GHz can be selected together, with all selected radios using the same WiFi Network SSID; 6 GHz starts as WPA3-only. |
 | Mesh Radio | Radio that carries mesh backhaul, single-select. Every device must use the same radio. |
 | Wired Backhaul Port | Optional. Select the LAN bridge port cabled to another mesh device; keep **None** for wireless-only backhaul. |
 | Mesh Network SSID | Mesh backhaul identifier; must be identical on every device. The actual 802.11s `mesh_id` gets a `-mesh` suffix: entering `MyMesh` makes the over-the-air mesh ID `MyMesh-mesh`. |
