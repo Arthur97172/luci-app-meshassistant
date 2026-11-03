@@ -115,7 +115,7 @@ make package/luci-app-meshassistant/compile V=s
 
 ## 主题与兼容性
 
-- 支持 LuCI 亮色 / 暗色主题，无需手动切换：页面不包含自定义 CSS、内联颜色或颜色检测，只使用 LuCI 既有的 `cbi-*`、`.table`、`.alert-message` 等结构。
+- 支持 LuCI 亮色 / 暗色主题，无需手动切换：页面不包含自定义颜色或主题检测，只使用 LuCI 既有的 `cbi-*`、`.table`、`.alert-message` 等结构。
 - 已适配 `luci-theme-bootstrap`（OpenWrt 24.10 / 25.12 默认主题）与 `luci-theme-argon` 2.x / 3.x。
 - 兼容 OpenWrt / ImmortalWrt 24.10 与 25.12 的 JavaScript 版 LuCI，无需 `luci-compat`。
 - 语言：英文为默认；安装 `luci-i18n-meshassistant-zh-cn` 后，菜单显示「MESH助手」，页面文字切换为简体中文。

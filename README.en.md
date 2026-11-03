@@ -168,9 +168,8 @@ Disabling the mesh only undoes changes the script recorded as its own.
 ## Themes and compatibility
 
 - Works in both the light and dark variant of the LuCI theme with no manual
-  switch: the page contains no custom CSS, inline colors or theme detection. It
-  uses only existing LuCI structures such as `cbi-*`, `.table` and
-  `.alert-message`.
+  switch: the page contains no custom colors or theme detection. It uses only
+  existing LuCI structures such as `cbi-*`, `.table` and `.alert-message`.
 - Adapted to `luci-theme-bootstrap` (the default in OpenWrt 24.10 / 25.12) and
   to `luci-theme-argon` 2.x / 3.x.
 - Compatible with the JavaScript LuCI of OpenWrt / ImmortalWrt 24.10 and 25.12;

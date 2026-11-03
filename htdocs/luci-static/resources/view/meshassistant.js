@@ -361,7 +361,12 @@ return view.extend({
 				'data-tab-title': _('Mesh Status')
 			}, [ statusEl ]);
 
-			const tabsEl = E('div', {}, [ settingsEl, statusPane ]);
+			/*
+			 * Argon zeroes the top margin of the element that follows the tab
+			 * menu, so set the gap inline; the theme rules cannot override it.
+			 */
+			const tabsEl = E('div', { 'style': 'margin-block-start: 0.5rem' },
+				[ settingsEl, statusPane ]);
 			const pageEl = E('div', {}, [ hintEl, tabsEl ]);
 
 			ui.tabs.initTabGroup(tabsEl.childNodes);
