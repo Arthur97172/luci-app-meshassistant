@@ -146,6 +146,9 @@ msgstr ""
 msgid "Reapply meshassistant Settings"
 msgstr ""
 
+msgid "Remote Hosts"
+msgstr ""
+
 msgid "Select at least one radio."
 msgstr ""
 

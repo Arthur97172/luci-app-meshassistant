@@ -117,7 +117,11 @@ function renderStatus(status) {
 			E('strong', {}, [
 				_('Number of Active Nodes: %d').format(rows.length)
 			])
-		])
+		]),
+		E('div', {
+			'class': 'cbi-section-descr',
+			'style': 'font-size:0.95rem;font-weight:bold'
+		}, [ _('Remote Hosts') ])
 	];
 
 	if (!status.ok) {

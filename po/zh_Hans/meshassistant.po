@@ -148,6 +148,9 @@ msgstr "普通 AP 射频"
 msgid "Reapply meshassistant Settings"
 msgstr "重新应用 MESH助手设置"
 
+msgid "Remote Hosts"
+msgstr "远程主机"
+
 msgid "Select at least one radio."
 msgstr "请至少选择一个射频。"
 
