@@ -61,6 +61,9 @@ msgstr "应用 Mesh 设置失败：%s"
 msgid "First set up the Mesh gateway server, then set up the nodes. When configuring a Mesh node, first enable Mesh WiFi on the radio device and establish a connection, then enable it as a DHCP node. The default settings are usually sufficient for most Mesh WiFi configurations."
 msgstr "请先设置 Mesh 网关服务器，再设置节点。配置 Mesh 节点时，请先在射频设备上启用 Mesh WiFi 并建立连接，然后将其启用为 DHCP 节点。对于大多数 Mesh WiFi 配置，默认设置通常已足够。"
 
+msgid "Frequency"
+msgstr "频率"
+
 msgid "Good RSSI Threshold"
 msgstr "良好 RSSI 阈值"
 
@@ -159,6 +162,9 @@ msgstr "服务器"
 
 msgid "Server Provides DHCP"
 msgstr "服务器提供 DHCP"
+
+msgid "Signal Strength"
+msgstr "信号强度"
 
 msgid "SSID for the regular WiFi network."
 msgstr "普通 WiFi 网络的 SSID。"

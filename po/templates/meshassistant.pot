@@ -59,6 +59,9 @@ msgstr ""
 msgid "First set up the Mesh gateway server, then set up the nodes. When configuring a Mesh node, first enable Mesh WiFi on the radio device and establish a connection, then enable it as a DHCP node. The default settings are usually sufficient for most Mesh WiFi configurations."
 msgstr ""
 
+msgid "Frequency"
+msgstr ""
+
 msgid "Good RSSI Threshold"
 msgstr ""
 
@@ -156,6 +159,9 @@ msgid "Server"
 msgstr ""
 
 msgid "Server Provides DHCP"
+msgstr ""
+
+msgid "Signal Strength"
 msgstr ""
 
 msgid "SSID for the regular WiFi network."

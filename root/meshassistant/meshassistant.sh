@@ -1,5 +1,15 @@
 #!/bin/bash
 
+# Peer identity announcements.  Every mesh device broadcasts its mesh hardif
+# MAC together with its LAN address and hostname; the receiver stores the
+# announcement so the LuCI status table can show the address and hostname of
+# each neighbor.  A broadcast crosses bat0, so this works even when the traffic
+# table cannot map the neighbor's LAN MAC to an IP address.
+MESHASSISTANT_PORT=47123
+MESHASSISTANT_PEERS=/tmp/meshassistant_peers
+MESHASSISTANT_PEER_MAX_AGE=120
+MESHASSISTANT_ANNOUNCE_INTERVAL=10
+
 # Return immediately from LuCI RPC calls: wifi/network restarts may take
 # longer than the RPC timeout and can drop the current browser connection.
 if [ "$1" = "--detach" ]; then
@@ -473,6 +483,8 @@ set_apmode() {
         # Set LAN interface to DHCP client
         uci -q del network.lan.ipaddr
         uci -q del network.lan.netmask
+        uci -q del network.lan.gateway
+        uci -q del network.lan.dns
         uci set network.lan.proto='dhcp'
     fi
 
@@ -1011,6 +1023,166 @@ disable_batman_interfaces() {
     echo "Removed bat0 and mesh_batman from the network config."
 }
 
+# ---------------------------------------------------------------------------
+# Peer identity service
+#
+# The neighbor MAC in "batctl n" is the remote mesh hardif address, while the
+# LAN address belongs to br-lan.  In a shared wired segment BATMAN's global
+# translation table stays empty, so the two cannot be correlated from the
+# batman-adv tables alone.  Each device therefore announces its own hardif
+# MAC(s), LAN address and hostname by UDP broadcast.  The broadcast is bridged
+# onto bat0, so the nodes receive each other's announcement without knowing
+# each other's address in advance.
+# ---------------------------------------------------------------------------
+
+# Ethernet device of the LAN interface, falling back to br-lan.
+lan_device() {
+    local dev
+    dev=$(uci -q get network.lan.device)
+    [ -z "$dev" ] && dev=$(uci -q get network.lan.ifname)
+    dev=${dev%% *}
+    [ -n "$dev" ] || dev=br-lan
+    printf '%s\n' "$dev"
+}
+
+lan_ipv4() {
+    local ip
+    ip=$(ip -4 -o addr show dev "$(lan_device)" 2>/dev/null \
+        | awk '{ for (i = 1; i <= NF; i++) if ($i == "inet") { print $(i + 1); exit } }')
+    ip=${ip%%/*}
+    case "$ip" in
+        ''|*[!0-9.]*) return 0 ;;
+    esac
+    printf '%s\n' "$ip"
+}
+
+# Directed broadcast of the LAN, which bat0 bridges to the other mesh devices.
+lan_broadcast() {
+    ip -4 -o addr show dev "$(lan_device)" 2>/dev/null \
+        | awk '{ for (i = 1; i <= NF; i++) if ($i == "brd") { print $(i + 1); exit } }'
+}
+
+# Addresses of every batman-adv hardif.  A neighbor can be reached through the
+# Mesh radio or through a wired backhaul port; "batctl n" reports the MAC of
+# the hardif that carries the link, so all of them have to be announced.
+mesh_hardif_macs() {
+    local iface mac
+    for iface in $(batctl meshif bat0 interface 2>/dev/null \
+            | sed -n 's/^\([^:]*\):.*/\1/p'); do
+        [ -r "/sys/class/net/$iface/address" ] || continue
+        mac=$(cat "/sys/class/net/$iface/address" 2>/dev/null)
+        [ -n "$mac" ] && printf '%s\n' "$mac"
+    done
+}
+
+announce_identity() {
+    local ip brd hostname mac
+    ip=$(lan_ipv4)
+    [ -n "$ip" ] || return 0
+
+    brd=$(lan_broadcast)
+    [ -n "$brd" ] || brd=255.255.255.255
+
+    hostname=$(uci -q get system.@system[0].hostname)
+    [ -n "$hostname" ] || hostname=$(cat /proc/sys/kernel/hostname 2>/dev/null)
+    hostname=$(printf '%s' "$hostname" | tr -cd 'A-Za-z0-9._-')
+    [ -n "$hostname" ] || hostname='-'
+
+    for mac in $(mesh_hardif_macs); do
+        printf 'meshassistant/1 %s %s %s\n' "$mac" "$ip" "$hostname" \
+            | socat -u - "UDP-DATAGRAM:$brd:$MESHASSISTANT_PORT,broadcast" 2>/dev/null
+    done
+}
+
+# Called by socat for every received datagram; the datagram is on stdin.
+record_peer() {
+    local proto mac ip hostname ts
+    read -r proto mac ip hostname || true
+    [ "$proto" = "meshassistant/1" ] || return 0
+
+    mac=$(printf '%s' "$mac" | tr 'A-F' 'a-f')
+    case "$mac" in
+        [0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;;
+        *) return 0 ;;
+    esac
+
+    [ "$ip" = "-" ] && ip=''
+    case "$ip" in
+        ''|*[!0-9.]*) ip='' ;;
+    esac
+
+    hostname=$(printf '%s' "$hostname" | tr -cd 'A-Za-z0-9._-')
+    [ -n "$hostname" ] || hostname='-'
+
+    ts=$(date +%s)
+    printf '%s %s %s %s\n' "$ts" "$mac" "${ip:--}" "$hostname" \
+        >> "$MESHASSISTANT_PEERS"
+}
+
+# Drop announcements that were not refreshed within the maximum age.
+prune_peers() {
+    local now tmp
+    [ -f "$MESHASSISTANT_PEERS" ] || return 0
+    now=$(date +%s)
+    tmp="$MESHASSISTANT_PEERS.$$"
+    if awk -v now="$now" -v max="$MESHASSISTANT_PEER_MAX_AGE" \
+            '($1 + 0) >= now - max' "$MESHASSISTANT_PEERS" >"$tmp" 2>/dev/null; then
+        mv "$tmp" "$MESHASSISTANT_PEERS"
+    else
+        rm -f "$tmp"
+    fi
+}
+
+daemon_meshassistant() {
+    local listener
+
+    if ! command -v socat >/dev/null 2>&1; then
+        echo "socat is not installed; peer announcements are disabled."
+        exit 0
+    fi
+
+    : > "$MESHASSISTANT_PEERS"
+    socat -u "UDP-RECVFROM:$MESHASSISTANT_PORT,reuseaddr,fork" \
+        "EXEC:/meshassistant/meshassistant.sh peer" >/dev/null 2>&1 &
+    listener=$!
+
+    trap "kill $listener 2>/dev/null; rm -f '$MESHASSISTANT_PEERS'; exit 0" INT TERM
+    trap "kill $listener 2>/dev/null; rm -f '$MESHASSISTANT_PEERS'" EXIT
+
+    while true; do
+        announce_identity
+        prune_peers
+        sleep "$MESHASSISTANT_ANNOUNCE_INTERVAL" &
+        wait $!
+    done
+}
+
+# Frequency and signal of the active mesh links.  "batctl n" only reports the
+# MAC of the hardif that carries each link; the radio driver knows the channel
+# of the hardif and the signal of each station.  Print one value per line so
+# the LuCI view can merge it with the neighbor rows without parsing iw's
+# multi-line output:
+#   iface <hardif> <MHz>
+#   peer <hardif> <MAC> <dBm>
+link_info() {
+    command -v iw >/dev/null 2>&1 || return 0
+
+    batctl meshif bat0 interface 2>/dev/null \
+        | sed -n 's/^\([^:]*\):.*/\1/p' \
+        | while read -r iface; do
+            [ -n "$iface" ] || continue
+            freq=$(iw dev "$iface" info 2>/dev/null \
+                | sed -n 's/.*channel [0-9][0-9]* (\([0-9][0-9]*\) MHz).*/\1/p' \
+                | head -n 1)
+            [ -n "$freq" ] && printf 'iface %s %s\n' "$iface" "$freq"
+            iw dev "$iface" station dump 2>/dev/null \
+                | awk -v iface="$iface" '
+                    /^Station / { mac = $2; next }
+                    /^[[:space:]]*signal:/ { print "peer " iface " " mac " " $2 }
+                '
+        done
+}
+
 # Enable meshassistant
 enable_meshassistant() {
     # This implementation supports one mesh radio.  Reject a multi-value
@@ -1035,6 +1207,12 @@ enable_meshassistant() {
     # Set at end to be sure it worked
     uci set meshassistant.config.running=1
     uci commit meshassistant
+
+    # Start the peer identity service.  The init script stays enabled so the
+    # announcements resume after a reboot; it only runs while the config is
+    # enabled.
+    /etc/init.d/meshassistant enable >/dev/null 2>&1
+    /etc/init.d/meshassistant restart >/dev/null 2>&1
 }
 
 # Disable meshassistant
@@ -1044,6 +1222,7 @@ disable_meshassistant() {
     clear_by_mesh_id "$(uci -q get meshassistant.config.old_mesh_id)"
     uci -q del meshassistant.config.old_mesh_id
     disable_batman_interfaces
+    /etc/init.d/meshassistant stop >/dev/null 2>&1
 
     # Undo everything the script changed outside the mesh interfaces: the LAN
     # bridge membership, the node LAN address/hostname, the LAN DHCP/RA
@@ -1078,6 +1257,21 @@ disable_meshassistant() {
     uci -q del meshassistant.config.running
     uci commit meshassistant
 }
+
+if [ "$1" = "daemon" ]; then
+    daemon_meshassistant
+    exit 0
+fi
+
+if [ "$1" = "peer" ]; then
+    record_peer
+    exit 0
+fi
+
+if [ "$1" = "linkinfo" ]; then
+    link_info
+    exit 0
+fi
 
 if [ "$1" = "dumbap" ]; then
     set_apmode

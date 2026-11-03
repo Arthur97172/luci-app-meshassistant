@@ -3,11 +3,20 @@
 'require uci';
 'require ui';
 'require fs';
+'require rpc';
 'require network';
 'require meshassistant.utils as utils';
 
 const BATCTL = '/usr/sbin/batctl';
 const SCRIPT = '/meshassistant/meshassistant.sh';
+const PEERS_FILE = '/tmp/meshassistant_peers';
+
+const callLanStatus = rpc.declare({
+	object: 'network.interface',
+	method: 'status',
+	params: [ 'interface' ],
+	expect: { }
+});
 
 function radioOptions(devices) {
 	const choices = [];
@@ -110,20 +119,26 @@ function renderStatus(status) {
 	else {
 		const table = E('div', { 'class': 'table' }, [
 			E('div', { 'class': 'tr table-titles' }, [
-				E('div', { 'class': 'th' }, [ _('Interface') ]),
+				E('div', { 'class': 'th' }, [ _('Node Hostname') ]),
 				E('div', { 'class': 'th' }, [ _('Neighbor Nodes') ]),
 				E('div', { 'class': 'th' }, [ _('IP Address') ]),
+				E('div', { 'class': 'th' }, [ _('Interface') ]),
+				E('div', { 'class': 'th' }, [ _('Frequency') ]),
+				E('div', { 'class': 'th' }, [ _('Signal Strength') ]),
 				E('div', { 'class': 'th' }, [ _('Last Seen Timestamp') ])
 			])
 		]);
 
 		for (const row of rows) {
 			table.appendChild(E('div', { 'class': 'tr' }, [
-				E('div', { 'class': 'td' }, [ row.iface || '-' ]),
+				E('div', { 'class': 'td' }, [ row.hostname || '-' ]),
 				E('div', { 'class': 'td' }, [ row.neighbor ]),
 				E('div', { 'class': 'td' }, [
 					row.ips && row.ips.length ? row.ips.join(', ') : '-'
 				]),
+				E('div', { 'class': 'td' }, [ row.iface || '-' ]),
+				E('div', { 'class': 'td' }, [ row.frequency || '-' ]),
+				E('div', { 'class': 'td' }, [ row.signal || '-' ]),
 				E('div', { 'class': 'td' }, [ row.lastSeen ])
 			]));
 		}
@@ -150,6 +165,7 @@ return view.extend({
 	radios: [],
 	wiredPorts: [],
 	status: { ok: true, rows: [] },
+	lanDefaults: { ipaddr: '', netmask: '', gateway: '', dns: '' },
 
 	load() {
 		return Promise.all([
@@ -162,9 +178,12 @@ return view.extend({
 				fs.exec(BATCTL, [ 'n' ]).catch(() => null),
 				fs.exec(BATCTL, [ 'meshif', 'bat0', 'transtable_global_json' ]).catch(() => null),
 				fs.exec(BATCTL, [ 'meshif', 'bat0', 'dat_cache_json' ]).catch(() => null),
-				network.getHostHints().catch(() => null)
+				network.getHostHints().catch(() => null),
+				callLanStatus('lan').catch(() => null),
+				fs.read(PEERS_FILE).catch(() => ''),
+				fs.exec(SCRIPT, [ 'linkinfo' ]).catch(() => null)
 			]);
-		}).then(([ devices, reply, ttReply, datReply, hosts ]) => {
+		}).then(([ devices, reply, ttReply, datReply, hosts, lanStatus, peers, linkReply ]) => {
 			this.radios = devices.length
 				? radioOptions(devices)
 				: uci.sections('wireless', 'wifi-device').map(function(s) {
@@ -179,7 +198,8 @@ return view.extend({
 			    !this.wiredPorts.some(function(p) { return p[0] === current; }))
 				this.wiredPorts.unshift([ current, current ]);
 
-			this.status = utils.parseStatus(reply, ttReply, datReply, hosts);
+			this.status = utils.parseStatus(reply, ttReply, datReply, hosts, peers, linkReply);
+			this.lanDefaults = utils.lanDefaults(lanStatus, uci.get('network', 'lan') || {});
 		});
 	},
 
@@ -289,25 +309,25 @@ return view.extend({
 		o.depends('role', /^(off|client)$/);
 
 		o = s.taboption('apmode', form.Value, 'ipaddr', _('Static IP Address'));
-		o.default = '192.168.8.3';
+		o.default = this.lanDefaults.ipaddr;
 		o.datatype = 'ip4addr';
 		o.depends('ipmode', 'static');
 		o.depends('role', /^(off|client)$/);
 
 		o = s.taboption('apmode', form.Value, 'gateway', _('Mesh Gateway IP Address'));
-		o.default = '192.168.8.1';
+		o.default = this.lanDefaults.gateway;
 		o.datatype = 'ip4addr';
 		o.depends('ipmode', 'static');
 		o.depends('role', /^(off|client)$/);
 
 		o = s.taboption('apmode', form.Value, 'netmask', _('IPv4 netmask'));
-		o.default = '255.255.255.0';
+		o.default = this.lanDefaults.netmask;
 		o.datatype = 'ip4addr';
 		o.depends('ipmode', 'static');
 		o.depends('role', /^(off|client)$/);
 
 		o = s.taboption('apmode', form.Value, 'dns', _('DNS Server'));
-		o.default = '192.168.8.1';
+		o.default = this.lanDefaults.dns;
 		o.datatype = 'ip4addr';
 		o.depends('ipmode', 'static');
 		o.depends('role', /^(off|client)$/);

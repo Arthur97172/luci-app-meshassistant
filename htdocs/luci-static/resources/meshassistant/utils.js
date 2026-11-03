@@ -15,6 +15,13 @@ function isIPv4(value) {
 	return /^\d{1,3}(\.\d{1,3}){3}$/.test(value) && value !== '0.0.0.0';
 }
 
+function firstValue(value) {
+	if (Array.isArray(value))
+		value = value[0];
+
+	return clean(value).split(/\s+/)[0] || '';
+}
+
 return baseclass.extend({
 	// MAC addresses are compared case-insensitively: batctl prints them in
 	// lower case while LuCI host hints may keep the case of the DHCP lease.
@@ -28,6 +35,110 @@ return baseclass.extend({
 		const ip = clean(value);
 
 		return isIPv4(ip) ? ip : '';
+	},
+
+	// Convert an IPv4 prefix length (the "mask" of network.interface status)
+	// to the dotted netmask shown by LuCI.
+	prefixToNetmask(prefix) {
+		if (prefix == null || clean(prefix) === '')
+			return '';
+
+		const bits = Number(prefix);
+
+		if (!Number.isInteger(bits) || bits < 0 || bits > 32)
+			return '';
+
+		const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
+
+		return [
+			(mask >>> 24) & 0xff,
+			(mask >>> 16) & 0xff,
+			(mask >>> 8) & 0xff,
+			mask & 0xff
+		].join('.');
+	},
+
+	// Defaults for the node's static LAN settings.  They come from the LAN
+	// interface as it is currently configured: the live status of
+	// network.interface (DHCP lease or static address, route, DNS) is used
+	// first and the UCI section is only a fallback, so the form never offers
+	// an address that does not belong to this LAN.  An empty string means
+	// that no value could be detected.
+	lanDefaults(status, lan) {
+		status = status || {};
+		lan = lan || {};
+
+		let ipaddr = '';
+		let netmask = '';
+		let gateway = '';
+		let dns = '';
+
+		const addresses = Array.isArray(status['ipv4-address'])
+			? status['ipv4-address'] : [];
+
+		for (const addr of addresses) {
+			const ip = this.ipv4(addr && addr.address);
+
+			if (ip) {
+				ipaddr = ip;
+
+				if (addr.mask != null)
+					netmask = this.prefixToNetmask(addr.mask);
+				break;
+			}
+		}
+
+		const uciAddr = firstValue(lan.ipaddr);
+		const cidr = uciAddr.split('/');
+
+		if (!ipaddr)
+			ipaddr = this.ipv4(cidr[0]);
+
+		if (!netmask) {
+			if (cidr[1])
+				netmask = this.prefixToNetmask(cidr[1]);
+			else
+				netmask = this.ipv4(firstValue(lan.netmask));
+		}
+
+		const routes = Array.isArray(status.route) ? status.route : [];
+
+		for (const route of routes) {
+			if (clean(route && route.target) !== '0.0.0.0' ||
+			    Number(route.mask) !== 0)
+				continue;
+
+			gateway = this.ipv4(route.nexthop);
+
+			if (gateway)
+				break;
+		}
+
+		if (!gateway)
+			gateway = this.ipv4(firstValue(lan.gateway));
+
+		const servers = Array.isArray(status['dns-server'])
+			? status['dns-server'] : [];
+
+		for (const server of servers) {
+			dns = this.ipv4(server);
+
+			if (dns)
+				break;
+		}
+
+		if (!dns)
+			dns = this.ipv4(firstValue(lan.dns));
+
+		if (!dns)
+			dns = gateway;
+
+		return {
+			ipaddr: ipaddr,
+			netmask: netmask,
+			gateway: gateway,
+			dns: dns
+		};
 	},
 
 	// batctl returns a JSON array; treat malformed output like no data so a
@@ -175,6 +286,142 @@ return baseclass.extend({
 		return rows;
 	},
 
+	// Peer announcements written by the daemon.  Each line is
+	// "<epoch> <mesh MAC> <IPv4|-> <hostname>".  The age is measured against
+	// the newest entry in the file, not the browser clock: a router without
+	// NTP can have a clock that is far from the browser's.
+	parsePeers(text, maxAge) {
+		const entries = [];
+		const limit = maxAge == null ? 120 : Number(maxAge);
+		let latest = null;
+
+		for (let line of String(text == null ? '' : text).split(/\r?\n/)) {
+			line = line.trim();
+
+			if (!line)
+				continue;
+
+			const parts = line.split(/\s+/);
+
+			if (parts.length < 4)
+				continue;
+
+			const time = Number(parts[0]);
+			const mac = this.macKey(parts[1]);
+			const ip = parts[2] === '-' ? '' : this.ipv4(parts[2]);
+			const hostname = clean(parts.slice(3).join(' '));
+
+			if (!Number.isFinite(time) || !mac || !hostname)
+				continue;
+
+			entries.push({ time: time, mac: mac, ip: ip, hostname: hostname });
+
+			if (latest == null || time > latest)
+				latest = time;
+		}
+
+		if (latest == null || !(limit >= 0))
+			return entries;
+
+		const cutoff = latest - limit;
+
+		return entries.filter(function(entry) {
+			return entry.time >= cutoff;
+		});
+	},
+
+	// Attach the announced hostname and IP to every neighbor row.  When a MAC
+	// was announced several times, the newest announcement wins.  An
+	// announced address is the neighbor's real LAN address, so it is placed
+	// first in the IP list.
+	annotatePeers(rows, entries) {
+		const latest = {};
+
+		for (const entry of entries || []) {
+			const previous = latest[entry.mac];
+
+			if (!previous || entry.time >= previous.time)
+				latest[entry.mac] = entry;
+		}
+
+		for (const row of rows) {
+			const mac = this.macKey(row.neighbor);
+			const peer = mac ? latest[mac] : null;
+
+			row.hostname = peer ? peer.hostname : '';
+
+			if (!Array.isArray(row.ips))
+				row.ips = [];
+
+			if (peer && peer.ip && row.ips.indexOf(peer.ip) === -1)
+				row.ips.unshift(peer.ip);
+		}
+
+		return rows;
+	},
+
+	// "linkinfo" output of the helper script.  The radio driver reports the
+	// channel of a hardif and the signal of each station; the app merges them
+	// with the neighbor rows by interface name and MAC.  Missing values are
+	// simply absent, which is normal for a wired backhaul.
+	parseLinkInfo(reply) {
+		const links = {};
+
+		if (!reply || reply.code !== 0)
+			return links;
+
+		for (let line of String(reply.stdout == null ? '' : reply.stdout).split(/\r?\n/)) {
+			const parts = line.trim().split(/\s+/);
+
+			if (parts[0] === 'iface' && parts.length >= 3) {
+				const iface = clean(parts[1]);
+				const frequency = Number(parts[2]);
+
+				if (!iface || !Number.isFinite(frequency) || frequency <= 0)
+					continue;
+
+				if (!links[iface])
+					links[iface] = {};
+				links[iface].frequency = frequency;
+			}
+			else if (parts[0] === 'peer' && parts.length >= 4) {
+				const iface = clean(parts[1]);
+				const mac = this.macKey(parts[2]);
+				const signal = Number(parts[3]);
+
+				if (!iface || !mac || !Number.isFinite(signal))
+					continue;
+
+				if (!links[iface])
+					links[iface] = {};
+				if (!links[iface].signals)
+					links[iface].signals = {};
+				links[iface].signals[mac] = signal;
+			}
+		}
+
+		return links;
+	},
+
+	// Attach the radio frequency and the peer signal to every neighbor row.
+	// Both depend on the hardif named by "batctl n": a wired backhaul has no
+	// channel and no station signal, so those cells stay empty.
+	annotateLinks(rows, links) {
+		links = links || {};
+
+		for (const row of rows) {
+			const iface = clean(row.iface);
+			const link = links[iface] || {};
+			const mac = this.macKey(row.neighbor);
+			const signal = mac && link.signals ? link.signals[mac] : null;
+
+			row.frequency = link.frequency ? link.frequency + ' MHz' : '';
+			row.signal = signal == null ? '' : signal + ' dBm';
+		}
+
+		return rows;
+	},
+
 	parseNeighbors(stdout) {
 		const rows = [];
 
@@ -211,7 +458,7 @@ return baseclass.extend({
 		return rows;
 	},
 
-	parseStatus(reply, ttReply, datReply, hostHints) {
+	parseStatus(reply, ttReply, datReply, hostHints, peerText, linkReply) {
 		if (!reply || reply.code !== 0)
 			return { ok: false, rows: [] };
 
@@ -221,6 +468,8 @@ return baseclass.extend({
 			this.parseTranstableGlobal(ttReply),
 			this.parseDatCache(datReply),
 			hostHints);
+		this.annotatePeers(rows, this.parsePeers(peerText));
+		this.annotateLinks(rows, this.parseLinkInfo(linkReply));
 
 		return { ok: true, rows: rows };
 	}

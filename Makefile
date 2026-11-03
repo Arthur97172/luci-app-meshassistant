@@ -6,7 +6,7 @@
 #
 
 PKG_NAME:=luci-app-meshassistant
-PKG_VERSION:=2.1.2
+PKG_VERSION:=2.1.5
 PKG_RELEASE:=1
 
 PKG_LICENSE:=GPL-3.0-only
@@ -19,7 +19,7 @@ LUCI_MAINTAINER:=Arthur97172 <Arthur97172@users.noreply.github.com>
 include $(TOPDIR)/rules.mk
 
 LUCI_TITLE:=LuCI Support for mesh setup.
-LUCI_DEPENDS:=+luci-base +kmod-cfg80211 +batctl-default +kmod-batman-adv +dawn +bash +luci-proto-batman-adv
+LUCI_DEPENDS:=+luci-base +kmod-cfg80211 +batctl-default +kmod-batman-adv +dawn +bash +luci-proto-batman-adv +socat +iw
 
 include $(TOPDIR)/feeds/luci/luci.mk
 

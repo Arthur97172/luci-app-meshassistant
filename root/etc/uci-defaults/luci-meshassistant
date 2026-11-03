@@ -19,4 +19,8 @@ uci -q batch <<-EOF >/dev/null
 EOF
 
 rm -f /tmp/luci-indexcache
+
+# The peer identity service is enabled at boot; it only starts while
+# meshassistant.config.enabled is 1.
+[ -x /etc/init.d/meshassistant ] && /etc/init.d/meshassistant enable
 exit 0
