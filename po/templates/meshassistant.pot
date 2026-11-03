@@ -38,9 +38,6 @@ msgstr ""
 msgid "Mesh Assistant"
 msgstr ""
 
-msgid "Mesh Assistant WiFi Setup"
-msgstr ""
-
 msgid "Enable Dumb AP Mode"
 msgstr ""
 
@@ -132,9 +129,6 @@ msgid "None (wireless backhaul only)"
 msgstr ""
 
 msgid "Number of Active Nodes: %d"
-msgstr ""
-
-msgid "Official website:"
 msgstr ""
 
 msgid "Password Protection"

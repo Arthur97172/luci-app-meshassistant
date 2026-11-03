@@ -132,7 +132,3 @@ make package/luci-app-meshassistant/compile V=s
 ## 许可证
 
 GPL-3.0-only
-
-## 致谢
-
-- 本仓库灵感来源于 https://github.com/torguardvpn/luci-app-easymesh 并在此基础上进行了优化。

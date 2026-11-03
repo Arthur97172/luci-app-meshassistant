@@ -194,7 +194,3 @@ Disabling the mesh only undoes changes the script recorded as its own.
 ## License
 
 GPL-3.0-only
-
-## Acknowledgements
-
-- This repository was inspired by https://github.com/torguardvpn/luci-app-easymesh and was optimized on top of it.

@@ -205,21 +205,13 @@ return view.extend({
 
 	render() {
 		const statusEl = renderStatus(this.status);
-		const descEl = E('div', {}, [
+		const hintEl = E('div', { 'class': 'cbi-map-descr' }, [
 			E('p', {}, [
 				_('First set up the Mesh gateway server, then set up the nodes. When configuring a Mesh node, first enable Mesh WiFi on the radio device and establish a connection, then enable it as a DHCP node. The default settings are usually sufficient for most Mesh WiFi configurations.')
-			]),
-			E('p', {}, [
-				_('Official website:'), ' ',
-				E('a', {
-					'href': 'https://www.open-mesh.org/projects/batman-adv/wiki',
-					'target': '_blank',
-					'rel': 'noopener noreferrer'
-				}, [ 'https://www.open-mesh.org/projects/batman-adv/wiki' ])
 			])
 		]);
 
-		const m = new form.Map('meshassistant', _('Mesh Assistant WiFi Setup'), descEl);
+		const m = new form.Map('meshassistant');
 		const s = m.section(form.TypedSection, 'meshassistant', _('Mesh Settings'));
 
 		s.anonymous = true;
@@ -358,7 +350,23 @@ return view.extend({
 		o.depends('role', /^(off|client)$/);
 
 		return m.render().then(function(mapEl) {
-			return E([ statusEl, mapEl ]);
+			const settingsEl = E('div', {
+				'data-tab': 'settings',
+				'data-tab-title': _('Mesh Settings'),
+				'data-tab-active': 'true'
+			}, [ mapEl ]);
+
+			const statusPane = E('div', {
+				'data-tab': 'status',
+				'data-tab-title': _('Mesh Status')
+			}, [ statusEl ]);
+
+			const tabsEl = E('div', {}, [ settingsEl, statusPane ]);
+			const pageEl = E('div', {}, [ hintEl, tabsEl ]);
+
+			ui.tabs.initTabGroup(tabsEl.childNodes);
+
+			return pageEl;
 		});
 	}
 });

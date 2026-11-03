@@ -40,9 +40,6 @@ msgstr "DNS 服务器"
 msgid "Mesh Assistant"
 msgstr "MESH助手"
 
-msgid "Mesh Assistant WiFi Setup"
-msgstr "MESH助手 WiFi 设置"
-
 msgid "Enable Dumb AP Mode"
 msgstr "启用哑 AP 模式"
 
@@ -135,9 +132,6 @@ msgstr "无（仅无线回程）"
 
 msgid "Number of Active Nodes: %d"
 msgstr "活动节点数：%d"
-
-msgid "Official website:"
-msgstr "官方网站："
 
 msgid "Password Protection"
 msgstr "密码保护"
