@@ -35,6 +35,9 @@ msgstr ""
 msgid "Client"
 msgstr ""
 
+msgid "Combine the two selected radios into one Wi-Fi 7 Multi-Link Operation (MLO) access point. The selected radios are switched to EHT mode."
+msgstr ""
+
 msgid "DHCP"
 msgstr ""
 
@@ -48,6 +51,9 @@ msgid "Enable Dumb AP Mode"
 msgstr ""
 
 msgid "Enable Mesh Networking"
+msgstr ""
+
+msgid "Enable MLO"
 msgstr ""
 
 msgid "Enable this switch to require a password to join your Mesh Network."

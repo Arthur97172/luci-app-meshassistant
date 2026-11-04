@@ -323,6 +323,15 @@ return view.extend({
 			return count <= 2 || _('Select at most two radios.');
 		};
 
+		/*
+		 * MLO combines exactly two radios into one Wi-Fi 7 access point.
+		 * The dependency matches a MultiValue converted to its comma-joined
+		 * form, so the checkbox appears only while two radios are selected.
+		 */
+		o = s.taboption('setup', form.Flag, 'mlo', _('Enable MLO'), _('Combine the two selected radios into one Wi-Fi 7 Multi-Link Operation (MLO) access point. The selected radios are switched to EHT mode.'));
+		o.default = '0';
+		o.depends('wifi_radio', /^[^,]+,[^,]+$/);
+
 		o = s.taboption('setup', form.ListValue, 'apRadio', _('Mesh Radio'), _('Select one radio interface for mesh backhaul traffic.'));
 		for (const [ value, label ] of this.radios)
 			o.value(value, label);

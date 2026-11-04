@@ -15,6 +15,7 @@
 | --- | --- |
 | 三种角色 | 服务器（Server，作为网关）、节点（Node）、客户端（Client） |
 | 普通 AP + Mesh 回程 | 普通 WiFi 可从 2.4 GHz、5 GHz、6 GHz 中选择最多两个射频（共用同一 SSID），Mesh 回程单独选择射频；Mesh 射频为单选 |
+| MLO 多链路 | 普通 AP 选择两个射频时可启用 MLO，把两个射频合并为一个 Wi-Fi 7 多链路接入点；所选射频会自动切换为 EHT 模式 |
 | 有线回程 | 可选择专用一个 LAN 口作为 Mesh 有线回程：插网线时使用有线，拔掉后自动改用 Mesh 无线 |
 | Mesh 状态 | 读取 `batctl n`、`iw` 及 Batman-adv 的转换表 / DAT 缓存，显示活动节点数、远程主机与本机信息，包括接口、节点 MAC、邻居及其下游客户端的 IP 地址、信号强度、负载、信道占用率、链路速率和最后发现时间 |
 | 后台应用 | 应用设置时脚本脱离页面在后台执行，并只做非破坏性的网络 / 无线重载，避免请求超时或页面掉线 |
@@ -68,7 +69,7 @@ make package/luci-app-meshassistant/compile V=s
 ## 快速开始
 
 1. 打开「网络 → MESH助手」，确定这台设备是「服务器」还是「节点」。一个 Mesh 中只应有一台服务器。
-2. 在「基础设置」中选择 Mesh 模式，填写 WiFi 网络 SSID、普通 AP 射频、Mesh 射频、Mesh 网络 SSID 和密码。普通 AP 射频可从 2.4 GHz、5 GHz、6 GHz 中选择最多两个射频，所选射频使用同一个 WiFi 网络 SSID；6 GHz 按 WPA3 启动；所有设备的 Mesh 射频、Mesh 网络 SSID 与密码必须一致。
+2. 在「基础设置」中选择 Mesh 模式，填写 WiFi 网络 SSID、普通 AP 射频、Mesh 射频、Mesh 网络 SSID 和密码。普通 AP 射频可从 2.4 GHz、5 GHz、6 GHz 中选择最多两个射频，所选射频使用同一个 WiFi 网络 SSID；选择两个射频时可勾选「启用 MLO」，把两个射频合并为一个 Wi-Fi 7 多链路接入点（射频会自动切换为 EHT 模式）；6 GHz 按 WPA3 启动；所有设备的 Mesh 射频、Mesh 网络 SSID 与密码必须一致。
 3. 节点或客户端在「AP 模式」页设置主机名和 IP：LAN 上有 DHCP 服务器时可选 DHCP，没有 DHCP 或需要固定管理地址时选择静态 IP。
 4. 需要有线回程时，在网线两端设备的「有线回程端口」中选择相连的 LAN 网桥端口；纯无线回程保持「无」。
 5. 点击「保存并应用」，再点击「重新应用 MESH助手设置」。建议先配置服务器，再配置节点；执行日志位于 `/tmp/meshassistant.log`。

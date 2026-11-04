@@ -869,17 +869,68 @@ process_radios() {
     done
 }
 
-# Configure one regular WiFi AP per selected radio.  Every selected radio uses
-# the same SSID, key and KVR settings, so clients see a single WiFi network on
-# both bands and can roam between them.
+# Write the settings shared by every regular WiFi AP.  $1 is the UCI section
+# name and $2 the wireless device (or device list) it serves.
+configure_ap_iface() {
+    local section="$1" device="$2"
+
+    uci set wireless.$section='wifi-iface'
+    uci set wireless.$section.device="$device"
+    uci set wireless.$section.mode='ap'
+    uci set wireless.$section.ssid="$WIFI_ID"
+    uci set wireless.$section.network='lan'
+    uci set wireless.$section.ieee80211r='1'
+    uci set wireless.$section.mobility_domain="$MOBILITY_DOMAIN"
+    uci set wireless.$section.ft_over_ds='0'
+    uci set wireless.$section.ft_psk_generate_local='0'
+    uci set wireless.$section.disabled='0'
+
+    # Apply encryption settings for regular WiFi
+    if [ "$ENCRYPTION_ENABLED" = 1 ] && [ -n "$NETWORK_KEY" ]; then
+        uci set wireless.$section.encryption='sae-mixed'
+        uci set wireless.$section.key="$NETWORK_KEY"
+    else
+        uci set wireless.$section.encryption='none'
+        [ -z "$NETWORK_KEY" ] && echo "Encryption key is empty, so encryption was disabled."
+    fi
+}
+
+# Every link of an AP MLD must be 802.11be; otherwise hostapd refuses the link
+# with "Cannot enable mld_ap when IEEE 802.11be is disabled".  Keep the
+# configured channel width and switch the radio to its EHT equivalent.
+enable_eht_htmode() {
+    local radio="$1" htmode width
+
+    htmode=$(uci -q get wireless.$radio.htmode)
+    case "$htmode" in
+        EHT*) return 0 ;;
+    esac
+
+    width=${htmode#HE}
+    width=${width#VHT}
+    width=${width#HT}
+    case "$width" in
+        20|40|80|160|320) ;;
+        *) width=20 ;;
+    esac
+
+    uci set wireless.$radio.htmode="EHT$width"
+    echo "Set $radio htmode to EHT$width for MLO."
+}
+
+# Configure the regular WiFi AP.  Without MLO one AP is created per selected
+# radio.  With MLO the two selected radios form a single AP MLD, so clients see
+# one WiFi 7 access point reachable over both links.  In both cases every radio
+# uses the same SSID, key and KVR settings.
 setup_ap_radios() {
-    local radio managed
+    local radio managed count=0
 
     WIFI_ID=$(uci -q get meshassistant.config.wifi_id)
     WIFI_RADIOS=$(uci -q get meshassistant.config.wifi_radio)
     ENCRYPTION_ENABLED=$(uci -q get meshassistant.config.encryption)
     NETWORK_KEY=$(uci -q get meshassistant.config.key)
     MOBILITY_DOMAIN=$(uci -q get meshassistant.config.mobility_domain)
+    MLO_ENABLED=$(uci -q get meshassistant.config.mlo)
 
     if [ -z "$WIFI_ID" ]; then
         echo "Regular WiFi SSID is empty. Using default."
@@ -893,28 +944,41 @@ setup_ap_radios() {
     fi
 
     for radio in $WIFI_RADIOS; do
-        echo "Configuring regular WiFi AP on $radio"
-
-        uci set wireless.wifi_ap_$radio='wifi-iface'
-        uci set wireless.wifi_ap_$radio.device="$radio"
-        uci set wireless.wifi_ap_$radio.mode='ap'
-        uci set wireless.wifi_ap_$radio.ssid="$WIFI_ID"
-        uci set wireless.wifi_ap_$radio.network='lan'
-        uci set wireless.wifi_ap_$radio.ieee80211r='1'
-        uci set wireless.wifi_ap_$radio.mobility_domain=$MOBILITY_DOMAIN
-        uci set wireless.wifi_ap_$radio.ft_over_ds='0'
-        uci set wireless.wifi_ap_$radio.ft_psk_generate_local='0'
-        uci set wireless.wifi_ap_$radio.disabled=0
-
-        # Apply encryption settings for regular WiFi
-        if [ "$ENCRYPTION_ENABLED" = 1 ] && [ ! -z "$NETWORK_KEY" ]; then
-            uci set wireless.wifi_ap_$radio.encryption='sae-mixed'
-            uci set wireless.wifi_ap_$radio.key=$NETWORK_KEY
-        else
-            uci set wireless.wifi_ap_$radio.encryption='none'
-            [ -z "$NETWORK_KEY" ] && echo "Encryption key is empty, so encryption was disabled."
-        fi
+        count=$((count + 1))
     done
+
+    # MLO combines exactly two radios into one access point.  Ignore a saved
+    # flag for any other selection, so a later change to one radio cannot
+    # leave a half-configured MLD behind.
+    if [ "$MLO_ENABLED" = 1 ] && [ "$count" -eq 2 ]; then
+        echo "Configuring one MLO access point on $WIFI_RADIOS"
+
+        for radio in $WIFI_RADIOS; do
+            enable_eht_htmode "$radio"
+        done
+
+        configure_ap_iface wifi_ap_mlo "$WIFI_RADIOS"
+        uci set wireless.wifi_ap_mlo.mlo='1'
+
+        # The single MLD interface replaces the per-radio AP sections.
+        for radio in $WIFI_RADIOS; do
+            if [ "$(uci -q get wireless.wifi_ap_$radio.mode)" = "ap" ]; then
+                uci -q del "wireless.wifi_ap_$radio"
+                echo "Deleted regular WiFi AP '$radio' merged into MLO."
+            fi
+        done
+    else
+        # Drop an MLO access point left by an earlier run.
+        if [ "$(uci -q get wireless.wifi_ap_mlo.mlo)" = 1 ]; then
+            uci -q del wireless.wifi_ap_mlo
+            echo "Deleted the MLO access point."
+        fi
+
+        for radio in $WIFI_RADIOS; do
+            echo "Configuring regular WiFi AP on $radio"
+            configure_ap_iface "wifi_ap_$radio" "$radio"
+        done
+    fi
 
     # Remove AP sections that this plugin managed on an earlier run but that
     # are no longer selected.  Only radios recorded in ap_radios_managed are

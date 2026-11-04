@@ -37,6 +37,9 @@ msgstr "清空日志"
 msgid "Client"
 msgstr "客户端"
 
+msgid "Combine the two selected radios into one Wi-Fi 7 Multi-Link Operation (MLO) access point. The selected radios are switched to EHT mode."
+msgstr "将所选的两个射频合并为一个 Wi-Fi 7 多链路操作（MLO）接入点。所选射频会自动切换为 EHT 模式。"
+
 msgid "DHCP"
 msgstr "DHCP"
 
@@ -51,6 +54,9 @@ msgstr "启用哑 AP 模式"
 
 msgid "Enable Mesh Networking"
 msgstr "启用 Mesh 网络"
+
+msgid "Enable MLO"
+msgstr "启用 MLO"
 
 msgid "Enable this switch to require a password to join your Mesh Network."
 msgstr "启用此开关后，加入 Mesh 网络需要密码。"
