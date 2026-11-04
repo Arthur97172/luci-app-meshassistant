@@ -7,6 +7,12 @@
 'require network';
 'require meshassistant.utils as utils';
 
+document.querySelector('head').appendChild(E('link', {
+	'rel': 'stylesheet',
+	'type': 'text/css',
+	'href': L.resource('view/meshassistant/meshassistant.css')
+}));
+
 const BATCTL = '/usr/sbin/batctl';
 const SCRIPT = '/meshassistant/meshassistant.sh';
 const PEERS_FILE = '/tmp/meshassistant_peers';
@@ -356,6 +362,17 @@ return view.extend({
 		o.depends('encryption', '1');
 
 		o = s.taboption('setup', form.Button, '_btn_reapply', _('Reapply meshassistant Settings'), _('Use this button to apply/reapply meshassistant configuration after you Save & Apply.'));
+		const renderReapply = o.render;
+		o.render = function() {
+			return renderReapply.apply(this, arguments).then(function(node) {
+				const description = node.querySelector('.cbi-value-description');
+
+				if (description)
+					description.classList.add('meshassistant-note');
+
+				return node;
+			});
+		};
 		o.onclick = ui.createHandlerFn(this, function() {
 			return runScript([ '--detach' ]);
 		});

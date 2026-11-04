@@ -1,0 +1,35 @@
+/*
+ * Warning-style hint used in the Mesh Assistant form.
+ *
+ * Colours follow the amber scheme used by luci-app-online-upgrade: a light
+ * amber box by default and a translucent amber variant for dark themes.
+ */
+.meshassistant-note {
+	--note-fg: #b45309;
+	--note-bg: #fffbeb;
+	--note-border: #fde68a;
+
+	color: var(--note-fg);
+	background: var(--note-bg);
+	border: 1px solid var(--note-border);
+	border-radius: 4px;
+	margin-top: 8px;
+	padding: 8px 10px;
+	font-size: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root:not([data-argon-mode="light"]):not([data-darkmode="false"]) .meshassistant-note {
+		--note-fg: #fcd34d;
+		--note-bg: rgba(180, 83, 9, .18);
+		--note-border: rgba(253, 230, 138, .35);
+	}
+}
+
+:root[data-argon-mode="dark"] .meshassistant-note,
+:root[data-darkmode="true"] .meshassistant-note,
+html.dark .meshassistant-note {
+	--note-fg: #fcd34d;
+	--note-bg: rgba(180, 83, 9, .18);
+	--note-border: rgba(253, 230, 138, .35);
+}
