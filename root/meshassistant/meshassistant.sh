@@ -994,6 +994,157 @@ enable_eht_htmode() {
     echo "Set $radio htmode to EHT$width for MLO."
 }
 
+# Return success when a mode/width pair is valid for the radio's band.  The
+# form only offers valid combinations, but the config can also be edited by
+# hand, so the script checks again before handing it to hostapd.
+valid_spectrum_htmode() {
+    local band="$1" mode="$2" width="$3"
+
+    case "$mode" in
+        HT)
+            case "$width" in 20|40) return 0 ;; esac
+            ;;
+        VHT)
+            case "$band:$width" in
+                5g:20|5g:40|5g:80|5g:160) return 0 ;;
+            esac
+            ;;
+        HE)
+            case "$width" in 20|40|80|160) return 0 ;; esac
+            ;;
+        EHT)
+            case "$width" in
+                20|40|80|160) return 0 ;;
+                320) [ "$band" = "6g" ] && return 0 ;;
+            esac
+            ;;
+    esac
+
+    return 1
+}
+
+# Apply the per-radio spectrum settings saved by the "Spectrum Settings" tab.
+# Empty values are skipped, so a field the user did not set never overrides the
+# radio's current configuration or the driver default.  The settings live in
+# meshassistant.config rather than wireless so a reapply can reapply them after
+# the AP/mesh sections are regenerated.
+apply_spectrum_settings() {
+    local radio radio_list seen band country channel mode width txpower
+    local current htmode effective_channel
+
+    radio_list="$AP_RADIO $(uci -q get meshassistant.config.wifi_radio)"
+    seen=""
+
+    for radio in $radio_list; do
+        [ -n "$radio" ] || continue
+        case " $seen " in
+            *" $radio "*) continue ;;
+        esac
+        seen="$seen $radio"
+
+        band=$(uci -q get wireless.$radio.band)
+        country=$(uci -q get meshassistant.config.spectrum_${radio}_country)
+        channel=$(uci -q get meshassistant.config.spectrum_${radio}_channel)
+        mode=$(uci -q get meshassistant.config.spectrum_${radio}_mode)
+        width=$(uci -q get meshassistant.config.spectrum_${radio}_width)
+        txpower=$(uci -q get meshassistant.config.spectrum_${radio}_txpower)
+
+        if [ -n "$country" ]; then
+            case "$country" in
+                [A-Z0-9][A-Z0-9])
+                    uci set wireless.$radio.country="$country"
+                    echo "Spectrum: $radio country=$country"
+                    ;;
+                *)
+                    echo "Spectrum: ignoring invalid country '$country' for $radio."
+                    ;;
+            esac
+        fi
+
+        if [ -n "$channel" ]; then
+            case "$channel" in
+                auto)
+                    uci set wireless.$radio.channel='auto'
+                    echo "Spectrum: $radio channel=auto"
+                    ;;
+                *[!0-9]*)
+                    echo "Spectrum: ignoring invalid channel '$channel' for $radio."
+                    ;;
+                *)
+                    uci set wireless.$radio.channel="$channel"
+                    echo "Spectrum: $radio channel=$channel"
+                    ;;
+            esac
+        fi
+
+        if [ -n "$mode" ] || [ -n "$width" ]; then
+            current=$(uci -q get wireless.$radio.htmode)
+
+            if [ -z "$mode" ]; then
+                case "$current" in
+                    EHT*) mode='EHT' ;;
+                    HE*) mode='HE' ;;
+                    VHT*) mode='VHT' ;;
+                    HT*) mode='HT' ;;
+                    *) mode='' ;;
+                esac
+            fi
+
+            if [ -z "$width" ]; then
+                width=${current#EHT}
+                width=${width#HE}
+                width=${width#VHT}
+                width=${width#HT}
+                case "$width" in
+                    20|40|80|160|320) ;;
+                    *) width=20 ;;
+                esac
+            fi
+
+            if [ -n "$mode" ] && valid_spectrum_htmode "$band" "$mode" "$width"; then
+                htmode="$mode$width"
+                uci set wireless.$radio.htmode="$htmode"
+                echo "Spectrum: $radio htmode=$htmode"
+            else
+                echo "Spectrum: ignoring invalid PHY mode/width '${mode}${width}' for $radio ($band)."
+            fi
+        fi
+
+        if [ -n "$txpower" ]; then
+            case "$txpower" in
+                *[!0-9]*)
+                    echo "Spectrum: ignoring invalid transmit power '$txpower' for $radio."
+                    ;;
+                *)
+                    if [ "$txpower" -ge 1 ] && [ "$txpower" -le 40 ]; then
+                        uci set wireless.$radio.txpower="$txpower"
+                        echo "Spectrum: $radio txpower=${txpower} dBm"
+                    else
+                        echo "Spectrum: ignoring out-of-range transmit power '$txpower' for $radio."
+                    fi
+                    ;;
+            esac
+        fi
+
+        # hostapd accepts a 5 GHz MLO link on a DFS channel, but radar
+        # detection can interrupt it.  Keep the user's choice and warn.
+        effective_channel=$(uci -q get wireless.$radio.channel)
+        if [ "$(uci -q get meshassistant.config.mlo)" = 1 ] && [ "$band" = "5g" ]; then
+            case " $(uci -q get meshassistant.config.wifi_radio) " in
+                *" $radio "*)
+                    case "$effective_channel" in
+                        52|56|60|64|100|104|108|112|116|120|124|128|132|136|140|144)
+                            echo "Spectrum: warning: $radio uses DFS channel $effective_channel; an MLO link may be interrupted by radar detection."
+                            ;;
+                    esac
+                    ;;
+            esac
+        fi
+    done
+
+    uci_commit wireless
+}
+
 # Configure the regular WiFi AP.  Without MLO one AP is created per selected
 # radio.  With MLO the two selected radios form a single AP MLD, so clients see
 # one WiFi 7 access point reachable over both links.  Every radio uses the same
@@ -1452,6 +1603,9 @@ enable_meshassistant() {
 
     log_note "Phase: creating the batman network"
     create_batman_network
+
+    log_note "Phase: applying spectrum settings"
+    apply_spectrum_settings
 
     log_note "Phase: configuring the mesh and regular AP radios"
     process_radios

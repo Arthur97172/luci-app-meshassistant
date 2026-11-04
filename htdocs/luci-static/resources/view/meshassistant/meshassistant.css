@@ -1,4 +1,21 @@
 /*
+ * Band and radio headings inside the Spectrum Settings tab.  The border uses
+ * the theme's own colour variable so both light and dark themes work.
+ */
+.meshassistant-spectrum-band {
+	margin: 1.25rem 0 0.25rem;
+	padding-bottom: 0.25rem;
+	border-bottom: 1px solid var(--border-color, rgba(127, 127, 127, .25));
+	font-size: 1.05rem;
+}
+
+.meshassistant-spectrum-radio {
+	margin: 0.75rem 0 0.25rem;
+	font-size: 0.95rem;
+	font-weight: 600;
+}
+
+/*
  * Warning-style hint used in the Mesh Assistant form.
  *
  * Colours follow the amber scheme used by luci-app-online-upgrade: a light

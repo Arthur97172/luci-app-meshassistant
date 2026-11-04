@@ -13,8 +13,17 @@ msgstr "高级设置"
 msgid "AP Mode"
 msgstr "AP 模式"
 
+msgid "Auto"
+msgstr "自动"
+
 msgid "Bad RSSI Threshold"
 msgstr "较差 RSSI 阈值"
+
+msgid "Band"
+msgstr "频段"
+
+msgid "Band plan of this radio (read-only)."
+msgstr "该射频的频段划分（只读）。"
 
 msgid "Basic Setup"
 msgstr "基础设置"
@@ -25,11 +34,23 @@ msgstr "取消"
 msgid "Channel"
 msgstr "信道"
 
+msgid "Channel %s (%s MHz)"
+msgstr "信道 %s（%s MHz）"
+
+msgid "Channel %s (%s MHz, DFS)"
+msgstr "信道 %s（%s MHz，DFS）"
+
 msgid "Channel Utilization"
 msgstr "信道占用率"
 
 msgid "Channel Width"
 msgstr "通道宽度"
+
+msgid "Channel bandwidth / channel bonding. Leave at “Keep current” to keep the radio width."
+msgstr "信道带宽 / 信道捆绑。保留“保持当前值”则不改动射频宽度。"
+
+msgid "Channel planning / frequency assignment. Leave at “Keep current” to keep the radio channel."
+msgstr "信道规划 / 频率指配。保留“保持当前值”则不改动射频信道。"
 
 msgid "Choose if the node uses DHCP or a Static IP"
 msgstr "选择节点使用 DHCP 还是静态 IP"
@@ -100,6 +121,9 @@ msgstr "接口"
 msgid "K/V/R"
 msgstr "K/V/R"
 
+msgid "Keep current (%s)"
+msgstr "保持当前值（%s）"
+
 msgid "Keep this enabled when the Mesh server is the only gateway and should provide DHCP and IPv6 RA for the LAN. Disable it when another router on the LAN already provides DHCP: the server then keeps the gateway and DNS role but stops its own DHCP/RA server."
 msgstr "当 Mesh 服务器是唯一网关并为 LAN 提供 DHCP 和 IPv6 RA 时，请保持启用。若 LAN 上已有其他路由器提供 DHCP，请关闭此项：服务器仍保留网关和 DNS 角色，但会停止自身的 DHCP/RA 服务。"
 
@@ -114,6 +138,9 @@ msgstr "负载"
 
 msgid "Local Host"
 msgstr "本机"
+
+msgid "Maximum Transmit Power"
+msgstr "最大传输功率"
 
 msgid "Mesh Gateway IP Address"
 msgstr "Mesh 网关 IP 地址"
@@ -166,6 +193,12 @@ msgstr "活动节点数：%d"
 msgid "Password Protection"
 msgstr "密码保护"
 
+msgid "PHY Mode"
+msgstr "PHY 模式"
+
+msgid "PHY layer protocol mode. Leave at “Keep current” to keep the radio mode."
+msgstr "PHY 层协议模式。保留“保持当前值”则不改动射频模式。"
+
 msgid "Regular AP Radio"
 msgstr "普通 AP 射频"
 
@@ -174,6 +207,9 @@ msgstr "重新应用 MESH助手设置"
 
 msgid "Refresh Log"
 msgstr "刷新日志"
+
+msgid "Regulatory domain (ISO/IEC 3166 alpha-2). Leave at “Keep current” to keep the current country code."
+msgstr "法规域（ISO/IEC 3166 alpha-2）。保留“保持当前值”则保持当前国家代码。"
 
 msgid "Remote Hosts"
 msgstr "远程主机"
@@ -202,8 +238,14 @@ msgstr "服务器"
 msgid "Server Provides DHCP"
 msgstr "服务器提供 DHCP"
 
+msgid "Set the channel plan for the selected regular AP and mesh radios. The settings are written to the radios when the mesh configuration is reapplied; fields left at “Keep current” are not changed."
+msgstr "为选中的普通 AP 射频和 Mesh 射频设置信道规划。重新应用 Mesh 配置时这些设置会写入射频；保留“保持当前值”的项不会被修改。"
+
 msgid "Signal Strength"
 msgstr "信号强度"
+
+msgid "Spectrum Settings"
+msgstr "频谱设置"
 
 msgid "Same SSID"
 msgstr "相同 SSID"
@@ -232,11 +274,23 @@ msgstr "静态"
 msgid "Static IP Address"
 msgstr "静态 IP 地址"
 
+msgid "The selected PHY mode does not support this channel width."
+msgstr "所选 PHY 模式不支持该通道宽度。"
+
 msgid "Continue?"
 msgstr "继续？"
 
+msgid "Country Code"
+msgstr "国家代码"
+
+msgid "driver default"
+msgstr "驱动默认值"
+
 msgid "Toggle this switch to activate or deactivate the Mesh Network on this device according to the settings specified in this configuration."
 msgstr "根据此配置中的设置，切换此开关以启用或停用本设备上的 Mesh 网络。"
+
+msgid "Transmit power / EIRP in dBm. Leave empty to keep the current transmit power."
+msgstr "发射功率 / EIRP（dBm）。留空则保持当前发射功率。"
 
 msgid "Unable to read mesh status."
 msgstr "无法读取 Mesh 状态。"

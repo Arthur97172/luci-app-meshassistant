@@ -11,7 +11,16 @@ msgstr ""
 msgid "AP Mode"
 msgstr ""
 
+msgid "Auto"
+msgstr ""
+
 msgid "Bad RSSI Threshold"
+msgstr ""
+
+msgid "Band"
+msgstr ""
+
+msgid "Band plan of this radio (read-only)."
 msgstr ""
 
 msgid "Basic Setup"
@@ -23,10 +32,22 @@ msgstr ""
 msgid "Channel"
 msgstr ""
 
+msgid "Channel %s (%s MHz)"
+msgstr ""
+
+msgid "Channel %s (%s MHz, DFS)"
+msgstr ""
+
 msgid "Channel Utilization"
 msgstr ""
 
 msgid "Channel Width"
+msgstr ""
+
+msgid "Channel bandwidth / channel bonding. Leave at “Keep current” to keep the radio width."
+msgstr ""
+
+msgid "Channel planning / frequency assignment. Leave at “Keep current” to keep the radio channel."
 msgstr ""
 
 msgid "Choose if the node uses DHCP or a Static IP"
@@ -98,6 +119,9 @@ msgstr ""
 msgid "K/V/R"
 msgstr ""
 
+msgid "Keep current (%s)"
+msgstr ""
+
 msgid "Keep this enabled when the Mesh server is the only gateway and should provide DHCP and IPv6 RA for the LAN. Disable it when another router on the LAN already provides DHCP: the server then keeps the gateway and DNS role but stops its own DHCP/RA server."
 msgstr ""
 
@@ -111,6 +135,9 @@ msgid "Load"
 msgstr ""
 
 msgid "Local Host"
+msgstr ""
+
+msgid "Maximum Transmit Power"
 msgstr ""
 
 msgid "Mesh Gateway IP Address"
@@ -164,6 +191,12 @@ msgstr ""
 msgid "Password Protection"
 msgstr ""
 
+msgid "PHY Mode"
+msgstr ""
+
+msgid "PHY layer protocol mode. Leave at “Keep current” to keep the radio mode."
+msgstr ""
+
 msgid "Regular AP Radio"
 msgstr ""
 
@@ -171,6 +204,9 @@ msgid "Reapply meshassistant Settings"
 msgstr ""
 
 msgid "Refresh Log"
+msgstr ""
+
+msgid "Regulatory domain (ISO/IEC 3166 alpha-2). Leave at “Keep current” to keep the current country code."
 msgstr ""
 
 msgid "Remote Hosts"
@@ -200,10 +236,16 @@ msgstr ""
 msgid "Server Provides DHCP"
 msgstr ""
 
+msgid "Set the channel plan for the selected regular AP and mesh radios. The settings are written to the radios when the mesh configuration is reapplied; fields left at “Keep current” are not changed."
+msgstr ""
+
 msgid "Signal Strength"
 msgstr ""
 
 msgid "Same SSID"
+msgstr ""
+
+msgid "Spectrum Settings"
 msgstr ""
 
 msgid "Separate SSIDs"
@@ -230,10 +272,22 @@ msgstr ""
 msgid "Static IP Address"
 msgstr ""
 
+msgid "The selected PHY mode does not support this channel width."
+msgstr ""
+
 msgid "Continue?"
 msgstr ""
 
+msgid "Country Code"
+msgstr ""
+
+msgid "driver default"
+msgstr ""
+
 msgid "Toggle this switch to activate or deactivate the Mesh Network on this device according to the settings specified in this configuration."
+msgstr ""
+
+msgid "Transmit power / EIRP in dBm. Leave empty to keep the current transmit power."
 msgstr ""
 
 msgid "Unable to read mesh status."

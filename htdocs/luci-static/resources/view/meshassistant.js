@@ -25,6 +25,103 @@ const callLanStatus = rpc.declare({
 	expect: { }
 });
 
+const callFreqList = rpc.declare({
+	object: 'iwinfo',
+	method: 'freqlist',
+	params: [ 'device' ],
+	expect: { results: [] }
+});
+
+const callCountryList = rpc.declare({
+	object: 'iwinfo',
+	method: 'countrylist',
+	params: [ 'device' ],
+	expect: { results: [] }
+});
+
+const BAND_NAMES = {
+	'2g': '2.4 GHz',
+	'5g': '5 GHz',
+	'6g': '6 GHz'
+};
+
+const BAND_NUMBERS = {
+	'2g': 2,
+	'5g': 5,
+	'6g': 6
+};
+
+const BAND_MODES = {
+	'2g': [ 'HT', 'HE', 'EHT' ],
+	'5g': [ 'HT', 'VHT', 'HE', 'EHT' ],
+	'6g': [ 'HE', 'EHT' ]
+};
+
+const BAND_WIDTHS = {
+	'2g': [ 20, 40 ],
+	'5g': [ 20, 40, 80, 160 ],
+	'6g': [ 20, 40, 80, 160, 320 ]
+};
+
+function radioBand(radio) {
+	return uci.get('wireless', radio, 'band') || '';
+}
+
+function parseHtmode(htmode) {
+	const match = /^(HT|VHT|HE|EHT)(20|40|80|160|320)$/.exec(htmode || '');
+
+	return match
+		? { mode: match[1], width: Number(match[2]) }
+		: { mode: '', width: null };
+}
+
+function isDfsChannel(band, channel) {
+	if (band !== '5g')
+		return false;
+
+	channel = Number(channel);
+
+	return (channel >= 52 && channel <= 64) ||
+		(channel >= 100 && channel <= 144);
+}
+
+function bandFrequencies(frequencies, band) {
+	const want = BAND_NUMBERS[band];
+	const seen = {};
+	const out = [];
+
+	for (const freq of frequencies || []) {
+		if (freq.band !== want || !freq.channel || seen[freq.channel])
+			continue;
+
+		if (freq.restricted && (freq.flags || []).indexOf('no_ir') !== -1)
+			continue;
+
+		seen[freq.channel] = true;
+		out.push(freq);
+	}
+
+	out.sort(function(a, b) { return a.channel - b.channel; });
+
+	return out;
+}
+
+function validSpectrumPair(band, mode, width) {
+	switch (mode) {
+	case 'HT':
+		return width === 20 || width === 40;
+	case 'VHT':
+		return band === '5g' && [ 20, 40, 80, 160 ].indexOf(width) !== -1;
+	case 'HE':
+		return [ 20, 40, 80, 160 ].indexOf(width) !== -1;
+	case 'EHT':
+		return [ 20, 40, 80, 160 ].indexOf(width) !== -1 ||
+			(band === '6g' && width === 320);
+	default:
+		return true;
+	}
+}
+
 function radioOptions(devices) {
 	const choices = [];
 
@@ -219,6 +316,8 @@ function runScript(args) {
 return view.extend({
 	radios: [],
 	apRadios: [],
+	freqList: [],
+	countryList: [],
 	wiredPorts: [],
 	status: { ok: true, rows: [] },
 	logText: '',
@@ -268,6 +367,44 @@ return view.extend({
 			this.status = utils.parseStatus(reply, ttReply, datReply, hosts, peers, linkReply);
 			this.logText = logText || '';
 			this.lanDefaults = utils.lanDefaults(lanStatus, uci.get('network', 'lan') || {});
+
+			/*
+			 * The channel and country lists come from iwinfo.  Only radios
+			 * with a known band are queried; a radio without band data has
+			 * no meaningful spectrum section anyway.
+			 */
+			const banded = this.radios
+				.map(function(choice) { return choice[0]; })
+				.filter(function(radio) { return BAND_NAMES[radioBand(radio)] != null; });
+
+			this.freqList = [];
+			this.countryList = [];
+
+			if (banded.length === 0)
+				return;
+
+			return Promise.all([
+				Promise.all(banded.map(function(radio) {
+					return callFreqList(radio).catch(function() {
+						return { results: [] };
+					});
+				})),
+				callCountryList(banded[0]).catch(function() {
+					return { results: [] };
+				})
+			]).then(([ lists, countries ]) => {
+				const seen = {};
+
+				for (const list of lists) {
+					for (const freq of (list && list.results) || [])
+						seen[freq.band + ':' + freq.channel] = freq;
+				}
+
+				this.freqList = Object.keys(seen).map(function(key) {
+					return seen[key];
+				});
+				this.countryList = (countries && countries.results) || [];
+			});
 		});
 	},
 
@@ -281,6 +418,8 @@ return view.extend({
 		s.addremove = false;
 
 		s.tab('setup', _('Basic Setup'));
+		s.tab('spectrum', _('Spectrum Settings'),
+			_('Set the channel plan for the selected regular AP and mesh radios. The settings are written to the radios when the mesh configuration is reapplied; fields left at “Keep current” are not changed.'));
 		s.tab('apmode', _('AP Mode'));
 		s.tab('advanced', _('Advanced Settings'));
 
@@ -358,10 +497,8 @@ return view.extend({
 		o.default = 'same';
 		o.depends({ mlo: '0', wifi_radio: /^[^,]+,[^,]+$/ });
 
-		const bandNames = { '2g': '2.4 GHz', '5g': '5 GHz', '6g': '6 GHz' };
-
 		for (const [ value ] of this.apRadios) {
-			const band = bandNames[uci.get('wireless', value, 'band')];
+			const band = BAND_NAMES[radioBand(value)];
 			const radioLabel = band ? '%s (%s)'.format(value, band) : value;
 
 			o = s.taboption('setup', form.Value, 'wifi_id_' + value,
@@ -412,6 +549,183 @@ return view.extend({
 		o.onclick = ui.createHandlerFn(this, function() {
 			return runScript([ '--detach' ]);
 		});
+
+		/*
+		 * Spectrum settings are stored per radio in the meshassistant config
+		 * and applied to wireless by the script on the next reapply.  A radio
+		 * is shown only while it is selected as a regular AP radio or as the
+		 * mesh radio; both roles are ORed so a radio used for both is shown
+		 * once.  Empty values are removed from the UCI config, which tells the
+		 * script to leave the radio's current setting alone.
+		 */
+		const spectrumBands = {};
+
+		for (const [ radio ] of this.radios) {
+			const band = radioBand(radio);
+
+			if (!BAND_NAMES[band])
+				continue;
+
+			if (!spectrumBands[band])
+				spectrumBands[band] = [];
+
+			spectrumBands[band].push(radio);
+		}
+
+		function addRadioDeps(option, radio) {
+			option.depends({ wifi_radio: new RegExp('(^|,)' + radio + '(,|$)') });
+			option.depends({ apRadio: radio });
+		}
+
+		for (const band of [ '2g', '5g', '6g' ]) {
+			const radios = spectrumBands[band];
+
+			if (!radios)
+				continue;
+
+			const bandLabel = BAND_NAMES[band];
+			const bandHeader = s.taboption('spectrum', form.DummyValue,
+				'_spectrum_band_' + band, '', '');
+
+			bandHeader.default = '<h3 class="meshassistant-spectrum-band">%s</h3>'
+				.format(bandLabel);
+			bandHeader.rawhtml = true;
+
+			for (const radio of radios)
+				addRadioDeps(bandHeader, radio);
+
+			for (const radio of radios) {
+				const current = parseHtmode(uci.get('wireless', radio, 'htmode'));
+				const currentChannel = uci.get('wireless', radio, 'channel') || 'auto';
+				const currentTxpower = uci.get('wireless', radio, 'txpower') || '';
+				const currentCountry = uci.get('wireless', radio, 'country') || '';
+
+				const radioHeader = s.taboption('spectrum', form.DummyValue,
+					'_spectrum_radio_' + radio, '', '');
+
+				radioHeader.default = '<h4 class="meshassistant-spectrum-radio">%s - %s</h4>'
+					.format(radio, bandLabel);
+				radioHeader.rawhtml = true;
+				addRadioDeps(radioHeader, radio);
+
+				const bandOpt = s.taboption('spectrum', form.DummyValue,
+					'spectrum_' + radio + '_band', _('Band'),
+					_('Band plan of this radio (read-only).'));
+				bandOpt.default = bandLabel;
+				bandOpt.rawhtml = false;
+				addRadioDeps(bandOpt, radio);
+
+				const modeOpt = s.taboption('spectrum', form.ListValue,
+					'spectrum_' + radio + '_mode', _('PHY Mode'),
+					_('PHY layer protocol mode. Leave at “Keep current” to keep the radio mode.'));
+				modeOpt.value('', _('Keep current (%s)')
+					.format(current.mode || _('driver default')));
+				for (const mode of BAND_MODES[band])
+					modeOpt.value(mode, mode);
+				modeOpt.default = '';
+				/*
+				 * An AP radio that participates in MLO is forced to EHT by
+				 * the script, so do not offer a mode that would silently be
+				 * overwritten.  The mesh radio keeps its mode selector.
+				 */
+				modeOpt.depends({
+					wifi_radio: new RegExp('(^|,)' + radio + '(,|$)'),
+					mlo: '0'
+				});
+				modeOpt.depends({ apRadio: radio });
+
+				let widthOpt;
+
+				modeOpt.validate = function(section_id, value) {
+					if (!value)
+						return true;
+
+					let width = current.width;
+
+					try {
+						const selected = widthOpt && widthOpt.formvalue(section_id);
+
+						if (selected)
+							width = Number(selected);
+					}
+					catch (e) { }
+
+					return validSpectrumPair(band, value, width) ||
+						_('The selected PHY mode does not support this channel width.');
+				};
+
+				widthOpt = s.taboption('spectrum', form.ListValue,
+					'spectrum_' + radio + '_width', _('Channel Width'),
+					_('Channel bandwidth / channel bonding. Leave at “Keep current” to keep the radio width.'));
+				widthOpt.value('', _('Keep current (%s)')
+					.format(current.width ? current.width + ' MHz' : _('driver default')));
+				for (const width of BAND_WIDTHS[band])
+					widthOpt.value(String(width), width + ' MHz');
+				widthOpt.default = '';
+				addRadioDeps(widthOpt, radio);
+				widthOpt.validate = function(section_id, value) {
+					if (!value)
+						return true;
+
+					let mode = current.mode;
+
+					try {
+						const selected = modeOpt.formvalue(section_id);
+
+						if (selected)
+							mode = selected;
+					}
+					catch (e) { }
+
+					return validSpectrumPair(band, mode, Number(value)) ||
+						_('The selected PHY mode does not support this channel width.');
+				};
+
+				const channelOpt = s.taboption('spectrum', form.ListValue,
+					'spectrum_' + radio + '_channel', _('Channel'),
+					_('Channel planning / frequency assignment. Leave at “Keep current” to keep the radio channel.'));
+				channelOpt.value('', _('Keep current (%s)').format(currentChannel));
+				channelOpt.value('auto', _('Auto'));
+				for (const freq of bandFrequencies(this.freqList, band)) {
+					const label = isDfsChannel(band, freq.channel)
+						? _('Channel %s (%s MHz, DFS)').format(freq.channel, freq.mhz)
+						: _('Channel %s (%s MHz)').format(freq.channel, freq.mhz);
+
+					channelOpt.value(String(freq.channel), label);
+				}
+				channelOpt.default = '';
+				addRadioDeps(channelOpt, radio);
+
+				const txpowerOpt = s.taboption('spectrum', form.Value,
+					'spectrum_' + radio + '_txpower', _('Maximum Transmit Power'),
+					_('Transmit power / EIRP in dBm. Leave empty to keep the current transmit power.'));
+				txpowerOpt.default = '';
+				txpowerOpt.placeholder = currentTxpower || '0';
+				txpowerOpt.datatype = 'range(1,40)';
+				addRadioDeps(txpowerOpt, radio);
+
+				const countryOpt = s.taboption('spectrum', form.ListValue,
+					'spectrum_' + radio + '_country', _('Country Code'),
+					_('Regulatory domain (ISO/IEC 3166 alpha-2). Leave at “Keep current” to keep the current country code.'));
+				countryOpt.value('', _('Keep current (%s)')
+					.format(currentCountry || _('driver default')));
+
+				const seenCountries = {};
+
+				for (const country of this.countryList) {
+					const code = country.iso3166 || country.code;
+
+					if (!code || seenCountries[code])
+						continue;
+
+					seenCountries[code] = true;
+					countryOpt.value(code, '%s - %s'.format(code, country.country || code));
+				}
+
+				countryOpt.default = '';
+				addRadioDeps(countryOpt, radio);
+			}
+		}
 
 		o = s.taboption('advanced', form.Flag, 'kvr', _('K/V/R'), _('Leave these settings as default unless you know what you are doing.'));
 		o.default = '1';

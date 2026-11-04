@@ -5,7 +5,8 @@
 			"ubus": {
 				"file": [ "exec" ],
 				"luci-rpc": [ "getWirelessDevices", "getHostHints" ],
-				"network.interface": [ "status" ]
+				"network.interface": [ "status" ],
+				"iwinfo": [ "freqlist", "countrylist" ]
 			},
 			"file": {
 				"/usr/sbin/batctl n": [ "exec" ],
