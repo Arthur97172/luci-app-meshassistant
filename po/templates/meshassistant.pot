@@ -68,6 +68,9 @@ msgstr ""
 msgid "Failed to clear the log: %s"
 msgstr ""
 
+msgid "Failed to refresh the log: %s"
+msgstr ""
+
 msgid "Frequency"
 msgstr ""
 
@@ -164,6 +167,9 @@ msgstr ""
 msgid "Reapply meshassistant Settings"
 msgstr ""
 
+msgid "Refresh Log"
+msgstr ""
+
 msgid "Remote Hosts"
 msgstr ""
 
@@ -176,7 +182,7 @@ msgstr ""
 msgid "Select at most two radios."
 msgstr ""
 
-msgid "Select one or two radios (2.4 GHz, 5 GHz and 6 GHz) for the regular WiFi access point. All selected radios use the same SSID."
+msgid "Select one or two radios (2.4 GHz, 5 GHz and 6 GHz) for the regular WiFi access point. The SSID for each radio can be configured below."
 msgstr ""
 
 msgid "Select one radio interface for mesh backhaul traffic."
@@ -194,7 +200,25 @@ msgstr ""
 msgid "Signal Strength"
 msgstr ""
 
-msgid "SSID for the regular WiFi network."
+msgid "Same SSID"
+msgstr ""
+
+msgid "Separate SSIDs"
+msgstr ""
+
+msgid "SSID Mode"
+msgstr ""
+
+msgid "SSID for %s"
+msgstr ""
+
+msgid "SSID for the regular WiFi network. This SSID is also used by the MLO access point and by radios without their own SSID."
+msgstr ""
+
+msgid "SSID used by this radio when separate SSIDs are enabled. Leave empty to use the shared SSID."
+msgstr ""
+
+msgid "Choose whether the selected radios share one SSID or use a separate SSID per radio. Separate SSIDs disable seamless 802.11r roaming between the radios."
 msgstr ""
 
 msgid "Static"

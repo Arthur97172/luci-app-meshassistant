@@ -70,6 +70,9 @@ msgstr "应用 Mesh 设置失败：%s"
 msgid "Failed to clear the log: %s"
 msgstr "清空日志失败：%s"
 
+msgid "Failed to refresh the log: %s"
+msgstr "刷新日志失败：%s"
+
 msgid "Frequency"
 msgstr "频率"
 
@@ -166,6 +169,9 @@ msgstr "普通 AP 射频"
 msgid "Reapply meshassistant Settings"
 msgstr "重新应用 MESH助手设置"
 
+msgid "Refresh Log"
+msgstr "刷新日志"
+
 msgid "Remote Hosts"
 msgstr "远程主机"
 
@@ -178,8 +184,8 @@ msgstr "请至少选择一个射频。"
 msgid "Select at most two radios."
 msgstr "最多选择两个射频。"
 
-msgid "Select one or two radios (2.4 GHz, 5 GHz and 6 GHz) for the regular WiFi access point. All selected radios use the same SSID."
-msgstr "选择用于普通 WiFi 接入点的一个或两个射频（2.4 GHz、5 GHz 与 6 GHz），所选射频使用相同的 SSID。"
+msgid "Select one or two radios (2.4 GHz, 5 GHz and 6 GHz) for the regular WiFi access point. The SSID for each radio can be configured below."
+msgstr "选择用于普通 WiFi 接入点的一个或两个射频（2.4 GHz、5 GHz 与 6 GHz）。各射频的 SSID 可在下方配置。"
 
 msgid "Select one radio interface for mesh backhaul traffic."
 msgstr "选择一个用于 Mesh 回程流量的射频接口。"
@@ -196,8 +202,26 @@ msgstr "服务器提供 DHCP"
 msgid "Signal Strength"
 msgstr "信号强度"
 
-msgid "SSID for the regular WiFi network."
-msgstr "普通 WiFi 网络的 SSID。"
+msgid "Same SSID"
+msgstr "相同 SSID"
+
+msgid "Separate SSIDs"
+msgstr "不同 SSID"
+
+msgid "SSID Mode"
+msgstr "SSID 模式"
+
+msgid "SSID for %s"
+msgstr "SSID（%s）"
+
+msgid "SSID for the regular WiFi network. This SSID is also used by the MLO access point and by radios without their own SSID."
+msgstr "普通 WiFi 网络的 SSID。MLO 接入点以及没有单独 SSID 的射频也使用此 SSID。"
+
+msgid "SSID used by this radio when separate SSIDs are enabled. Leave empty to use the shared SSID."
+msgstr "启用不同 SSID 时该射频使用的 SSID。留空则使用公共 SSID。"
+
+msgid "Choose whether the selected radios share one SSID or use a separate SSID per radio. Separate SSIDs disable seamless 802.11r roaming between the radios."
+msgstr "选择选中的射频共用一个 SSID，还是每个射频使用各自的 SSID。使用不同 SSID 时，射频之间无法通过 802.11r 无缝漫游。"
 
 msgid "Static"
 msgstr "静态"

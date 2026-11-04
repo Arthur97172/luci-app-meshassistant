@@ -19,6 +19,78 @@ if [ "$1" = "--detach" ]; then
     exit 0
 fi
 
+# The original command line, logged at the start of every run so the LuCI
+# "Run Log" tab shows what was invoked and with which arguments.
+MESHASSISTANT_ARGS="$*"
+
+# ---------------------------------------------------------------------------
+# Run log helpers
+#
+# The detached run redirects stdout/stderr to $MESHASSISTANT_LOG, which the
+# LuCI "Run Log" tab displays.  These helpers add a timestamped run header and
+# record the UCI options that each commit writes, so the log shows both the
+# script being run and the configuration it actually changed.
+# ---------------------------------------------------------------------------
+
+log_note() {
+    printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
+}
+
+# Write the pending UCI changes for one config (secrets masked) and commit
+# them.  Replaces plain "uci commit" so the run log records what changed.
+uci_commit() {
+    local config="$1" label changes
+
+    label=${config:-all configs}
+    changes=$(uci -q changes ${config:+$config} 2>/dev/null)
+
+    if [ -n "$changes" ]; then
+        log_note "Committing UCI changes ($label):"
+        printf '%s\n' "$changes" \
+            | sed -E "s/^([^=]*[._](key|psk|password|wpa_key)=).*/\1'***'/" \
+            | sed 's/^/    /'
+    else
+        log_note "No UCI changes to commit ($label)."
+    fi
+
+    uci commit ${config:+$config}
+}
+
+# Heading for a run: command line, host, and the settings that drive it.
+log_run_header() {
+    local action="$1" hostname ip key_state role server_dhcp ssid_mode wired_backhaul
+
+    hostname=$(uci -q get system.@system[0].hostname)
+    [ -n "$hostname" ] || hostname=$(cat /proc/sys/kernel/hostname 2>/dev/null)
+    ip=$(lan_ipv4 2>/dev/null)
+
+    if [ "$(uci -q get meshassistant.config.encryption)" = 1 ]; then
+        key_state='enabled'
+    else
+        key_state='disabled'
+    fi
+
+    # Show the effective value where the script applies a default.  role is
+    # empty when the form default (Server) was saved, since LuCI omits it.
+    role=$(uci -q get meshassistant.config.role)
+    role=${role:-server}
+    server_dhcp=$(uci -q get meshassistant.config.server_dhcp)
+    server_dhcp=${server_dhcp:-1}
+    ssid_mode=$(uci -q get meshassistant.config.ssid_mode)
+    ssid_mode=${ssid_mode:-same}
+    wired_backhaul=$(uci -q get meshassistant.config.wired_backhaul)
+    wired_backhaul=${wired_backhaul:-none}
+
+    log_note "============================================================"
+    log_note "meshassistant: $action"
+    log_note "Command: $0${MESHASSISTANT_ARGS:+ $MESHASSISTANT_ARGS}"
+    log_note "Host: ${hostname:-unknown}${ip:+ ($ip)}"
+    log_note "Settings: enabled=$(uci -q get meshassistant.config.enabled) role=$role server_dhcp=$server_dhcp"
+    log_note "Settings: mesh_radio='$(uci -q get meshassistant.config.apRadio)' ap_radios='$(uci -q get meshassistant.config.wifi_radio)' mlo=$(uci -q get meshassistant.config.mlo) ssid_mode=$ssid_mode wired_backhaul=$wired_backhaul"
+    log_note "Wireless: wifi_id='$(uci -q get meshassistant.config.wifi_id)' mesh_id='$(uci -q get meshassistant.config.mesh_id)' encryption=$key_state key='***'"
+    log_note "============================================================"
+}
+
 # ---------------------------------------------------------------------------
 # State helpers
 #
@@ -192,7 +264,7 @@ disable_service_recorded() {
     local service="$1"
     if /etc/init.d/$service enabled; then
         uci set "meshassistant.config.disabled_$service=1"
-        uci commit meshassistant
+        uci_commit meshassistant
         /etc/init.d/$service disable >/dev/null 2>&1
         /etc/init.d/$service stop >/dev/null 2>&1
         echo "Disabled and stopped $service."
@@ -207,7 +279,7 @@ restore_service_if_disabled() {
         /etc/init.d/$service enable >/dev/null 2>&1
         /etc/init.d/$service start >/dev/null 2>&1
         uci -q del "meshassistant.config.disabled_$service"
-        uci commit meshassistant
+        uci_commit meshassistant
         echo "Re-enabled $service."
     fi
 }
@@ -234,7 +306,7 @@ restore_dhcp_lan_state() {
     uci_backup_restore meshassistant.config dhcp.lan.ra lan_ra_backup
     uci_backup_restore meshassistant.config dhcp.lan.dhcpv6 lan_dhcpv6_backup
     uci -q del meshassistant.config.dhcp_lan_saved
-    uci commit dhcp
+    uci_commit dhcp
     echo "Restored the original LAN DHCP settings."
 }
 
@@ -257,7 +329,7 @@ restore_node_lan_state() {
     uci_backup_restore meshassistant.config network.lan.gateway lan_backup_gateway
     uci_backup_restore meshassistant.config network.lan.dns lan_backup_dns
     uci -q del meshassistant.config.lan_state_saved
-    uci commit network
+    uci_commit network
     echo "Restored the original LAN address."
 }
 
@@ -271,7 +343,7 @@ restore_hostname_state() {
     [ "$(uci -q get meshassistant.config.hostname_state_saved)" = 1 ] || return 0
     uci_backup_restore meshassistant.config system.@system[0].hostname hostname_backup
     uci -q del meshassistant.config.hostname_state_saved
-    uci commit system
+    uci_commit system
     echo "Restored the original hostname."
 }
 
@@ -313,9 +385,9 @@ apply_node_lan() {
         echo "Node hostname set to '$hostname'."
     fi
 
-    uci commit network
-    uci commit system
-    uci commit meshassistant
+    uci_commit network
+    uci_commit system
+    uci_commit meshassistant
 }
 
 # ---------------------------------------------------------------------------
@@ -544,7 +616,7 @@ set_apmode() {
                         new_network="${current_network} mesh_batman"
                         uci set "wireless.${wifinet}.network=${new_network}"
                         echo "Added 'mesh_batman' to the network setting for ${wifinet}."
-                        uci commit wireless
+                        uci_commit wireless
                     else
                         echo "'mesh_batman' is already in the network setting for ${wifinet}."
                     fi
@@ -556,7 +628,7 @@ set_apmode() {
     fi
 
     # Commit changes to make sure the wireless configuration is updated
-    uci commit
+    uci_commit
 
     # Restart wireless
     wifi reload
@@ -692,7 +764,7 @@ clear_by_mesh_id() {
     # The caller applies network and wireless once at the end (see
     # apply_mesh_config); reloading here would briefly remove the wireless
     # device that mesh_batman depends on.
-    uci commit wireless
+    uci_commit wireless
 }
 
 create_batman_network() {
@@ -721,8 +793,11 @@ create_batman_network() {
         echo "bat0 interface has been created."
     fi
 
-    # Set the bat0 role
+    # Set the bat0 role.  LuCI omits options that equal their form default, so
+    # a device configured with the default "Server" role has no role option at
+    # all; treat an empty value as server.
     BAT_ROLE=$(uci -q get meshassistant.config.role)
+    [ -z "$BAT_ROLE" ] && BAT_ROLE=server
     if [ "${BAT_ROLE}" == "server" ]; then
         uci set network.bat0.gw_mode='server'
         echo "Setting bat0 as a server."
@@ -768,7 +843,7 @@ create_batman_network() {
             fi
             ensure_lan_wan_forwarding
         fi
-        uci commit firewall
+        uci_commit firewall
 
         # Restore the firewall service if a previous node run disabled it.
         restore_service_if_disabled firewall
@@ -783,7 +858,7 @@ create_batman_network() {
                 uci set dhcp.lan.ignore='1'
                 uci set dhcp.lan.ra='disabled'
                 uci set dhcp.lan.dhcpv6='disabled'
-                uci commit dhcp
+                uci_commit dhcp
             fi
             # dnsmasq still serves DNS for the LAN; only DHCP/RA are off.
             restore_service_if_disabled dnsmasq
@@ -842,8 +917,8 @@ create_batman_network() {
     # to apply_mesh_config(): netifd then reads the new network and wireless
     # configuration together instead of applying the network half before the
     # 802.11s interface exists.
-    uci commit network
-    uci commit meshassistant
+    uci_commit network
+    uci_commit meshassistant
 
     echo "Network settings updated."
 }
@@ -870,14 +945,15 @@ process_radios() {
 }
 
 # Write the settings shared by every regular WiFi AP.  $1 is the UCI section
-# name and $2 the wireless device (or device list) it serves.
+# name, $2 the wireless device (or device list) it serves and $3 the optional
+# SSID for this section (defaults to the shared WIFI_ID).
 configure_ap_iface() {
-    local section="$1" device="$2"
+    local section="$1" device="$2" ssid="${3:-$WIFI_ID}"
 
     uci set wireless.$section='wifi-iface'
     uci set wireless.$section.device="$device"
     uci set wireless.$section.mode='ap'
-    uci set wireless.$section.ssid="$WIFI_ID"
+    uci set wireless.$section.ssid="$ssid"
     uci set wireless.$section.network='lan'
     uci set wireless.$section.ieee80211r='1'
     uci set wireless.$section.mobility_domain="$MOBILITY_DOMAIN"
@@ -920,10 +996,10 @@ enable_eht_htmode() {
 
 # Configure the regular WiFi AP.  Without MLO one AP is created per selected
 # radio.  With MLO the two selected radios form a single AP MLD, so clients see
-# one WiFi 7 access point reachable over both links.  In both cases every radio
-# uses the same SSID, key and KVR settings.
+# one WiFi 7 access point reachable over both links.  Every radio uses the same
+# key and KVR settings; the SSID is shared unless ssid_mode is 'separate'.
 setup_ap_radios() {
-    local radio managed count=0
+    local radio managed count=0 radio_ssid configured_ssid
 
     WIFI_ID=$(uci -q get meshassistant.config.wifi_id)
     WIFI_RADIOS=$(uci -q get meshassistant.config.wifi_radio)
@@ -931,6 +1007,8 @@ setup_ap_radios() {
     NETWORK_KEY=$(uci -q get meshassistant.config.key)
     MOBILITY_DOMAIN=$(uci -q get meshassistant.config.mobility_domain)
     MLO_ENABLED=$(uci -q get meshassistant.config.mlo)
+    SSID_MODE=$(uci -q get meshassistant.config.ssid_mode)
+    [ -z "$SSID_MODE" ] && SSID_MODE='same'
 
     if [ -z "$WIFI_ID" ]; then
         echo "Regular WiFi SSID is empty. Using default."
@@ -951,7 +1029,7 @@ setup_ap_radios() {
     # flag for any other selection, so a later change to one radio cannot
     # leave a half-configured MLD behind.
     if [ "$MLO_ENABLED" = 1 ] && [ "$count" -eq 2 ]; then
-        echo "Configuring one MLO access point on $WIFI_RADIOS"
+        echo "Configuring one MLO access point on $WIFI_RADIOS (SSID '$WIFI_ID')"
 
         for radio in $WIFI_RADIOS; do
             enable_eht_htmode "$radio"
@@ -975,8 +1053,20 @@ setup_ap_radios() {
         fi
 
         for radio in $WIFI_RADIOS; do
-            echo "Configuring regular WiFi AP on $radio"
-            configure_ap_iface "wifi_ap_$radio" "$radio"
+            radio_ssid="$WIFI_ID"
+            configured_ssid=""
+
+            if [ "$SSID_MODE" = "separate" ]; then
+                configured_ssid=$(uci -q get "meshassistant.config.wifi_id_$radio")
+                if [ -n "$configured_ssid" ]; then
+                    radio_ssid="$configured_ssid"
+                fi
+
+                echo "SSID mode: separate, $radio uses '$radio_ssid'."
+            fi
+
+            echo "Configuring regular WiFi AP on $radio (SSID '$radio_ssid')"
+            configure_ap_iface "wifi_ap_$radio" "$radio" "$radio_ssid"
         done
     fi
 
@@ -1000,8 +1090,8 @@ setup_ap_radios() {
         uci add_list meshassistant.config.ap_radios_managed="$radio"
     done
 
-    uci commit meshassistant
-    uci commit wireless
+    uci_commit meshassistant
+    uci_commit wireless
 }
 
 # This is called from the process_radios function and is passed the radio to be used for mesh
@@ -1055,7 +1145,7 @@ setup_mesh_radio() {
             uci set wireless.mesh_$CURRENT_RADIO.encryption='none'
         fi
 
-        uci commit wireless
+        uci_commit wireless
     fi
 }
 
@@ -1087,13 +1177,16 @@ apply_mesh_config() {
         uci set wireless.$radio.disabled=0
     done
 
-    uci commit wireless
+    uci_commit wireless
 
     # netifd reads /etc/config/network first, so bat0 and mesh_batman exist
     # before the 802.11s interface is created and attached to mesh_batman.
     # reload_config then applies the firewall, DHCP and system changes.
+    log_note "Running: /etc/init.d/network reload"
     /etc/init.d/network reload
+    log_note "Running: wifi reload"
     wifi reload
+    log_note "Running: reload_config"
     reload_config
     echo "Mesh configuration applied."
 }
@@ -1112,7 +1205,7 @@ disable_batman_interfaces() {
         uci -q del network.mesh_batman
     fi
 
-    uci commit network
+    uci_commit network
     echo "Removed bat0 and mesh_batman from the network config."
 }
 
@@ -1343,35 +1436,52 @@ enable_meshassistant() {
     # Clear stale wireless sections, but keep the section of the selected
     # radio so its wireless device never disappears.  process_radios()
     # rewrites all of its options in place.
+    log_note "Phase: removing stale mesh wireless sections"
     clear_by_mesh_id "$(uci -q get meshassistant.config.mesh_id)" "mesh_$AP_RADIO"
     clear_by_mesh_id "$(uci -q get meshassistant.config.old_mesh_id)" "mesh_$AP_RADIO"
     uci set meshassistant.config.old_mesh_id="$(uci -q get meshassistant.config.mesh_id)"
+
+    log_note "Phase: creating the batman network"
     create_batman_network
+
+    log_note "Phase: configuring the mesh and regular AP radios"
     process_radios
+
+    log_note "Phase: applying network, firewall and WiFi settings"
     apply_mesh_config
+
     # Set at end to be sure it worked
     uci set meshassistant.config.running=1
-    uci commit meshassistant
+    uci_commit meshassistant
 
     # Start the peer identity service.  The init script stays enabled so the
     # announcements resume after a reboot; it only runs while the config is
     # enabled.
+    log_note "Phase: starting the peer announcement service"
+    log_note "Running: /etc/init.d/meshassistant enable"
     /etc/init.d/meshassistant enable >/dev/null 2>&1
+    log_note "Running: /etc/init.d/meshassistant restart"
     /etc/init.d/meshassistant restart >/dev/null 2>&1
+    log_note "Done."
 }
 
 # Disable meshassistant
 disable_meshassistant() {
     # Clear old radios then set "old values"
+    log_note "Phase: removing the mesh wireless sections"
     clear_by_mesh_id "$(uci -q get meshassistant.config.mesh_id)"
     clear_by_mesh_id "$(uci -q get meshassistant.config.old_mesh_id)"
     uci -q del meshassistant.config.old_mesh_id
+
+    log_note "Phase: removing bat0 and mesh_batman, stopping the peer service"
     disable_batman_interfaces
+    log_note "Running: /etc/init.d/meshassistant stop"
     /etc/init.d/meshassistant stop >/dev/null 2>&1
 
     # Undo everything the script changed outside the mesh interfaces: the LAN
     # bridge membership, the node LAN address/hostname, the LAN DHCP/RA
     # settings and the services it disabled.
+    log_note "Phase: restoring the LAN bridge, address, DHCP and services"
     bridge_del_port bat0
     restore_node_lan_state
     restore_hostname_state
@@ -1390,17 +1500,19 @@ disable_meshassistant() {
         uci -q del meshassistant.config.forwarding_added
     fi
 
-    uci commit network
-    uci commit firewall
-    uci commit meshassistant
+    uci_commit network
+    uci_commit firewall
+    uci_commit meshassistant
 
+    log_note "Running: reload_config; /etc/init.d/network reload; wifi reload"
     reload_config
     /etc/init.d/network reload
     wifi reload
 
     # Set at end to be sure it worked
     uci -q del meshassistant.config.running
-    uci commit meshassistant
+    uci_commit meshassistant
+    log_note "Done."
 }
 
 if [ "$1" = "daemon" ]; then
@@ -1424,17 +1536,21 @@ if [ "$1" = "clearlog" ]; then
 fi
 
 if [ "$1" = "dumbap" ]; then
+    log_run_header "enabling Dumb AP mode"
     set_apmode
     exit 0
 elif [ "$1" = "undumb" ]; then
+    log_run_header "disabling Dumb AP mode"
     disable_apmode
     exit 0
 # If no params passed, we disable or enable meshassistant based on config
 else
     # Check if meshassistant is enabled
     if [ "$(uci -q get meshassistant.config.enabled)" = 1 ]; then
+        log_run_header "enabling the mesh"
         enable_meshassistant
     else
+        log_run_header "disabling the mesh"
         disable_meshassistant
     fi
 fi

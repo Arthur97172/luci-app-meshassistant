@@ -292,15 +292,27 @@ return view.extend({
 		o.value('off', _('Node'));
 		o.value('client', _('Client'));
 		o.default = 'server';
+		/*
+		 * LuCI drops options whose value equals the form default, so the
+		 * default "Server" would never reach UCI.  The script needs the
+		 * literal role, so keep writing it.
+		 */
+		o.rmempty = false;
 
 		o = s.taboption('setup', form.Flag, 'server_dhcp', _('Server Provides DHCP'), _('Keep this enabled when the Mesh server is the only gateway and should provide DHCP and IPv6 RA for the LAN. Disable it when another router on the LAN already provides DHCP: the server then keeps the gateway and DNS role but stops its own DHCP/RA server.'));
 		o.default = '1';
 		o.depends('role', 'server');
 
-		o = s.taboption('setup', form.Value, 'wifi_id', _('WiFi Network SSID'), _('SSID for the regular WiFi network.'));
+		o = s.taboption('setup', form.Value, 'wifi_id', _('WiFi Network SSID'), _('SSID for the regular WiFi network. This SSID is also used by the MLO access point and by radios without their own SSID.'));
 		o.default = 'meshassistant_AC';
+		/*
+		 * With separate SSIDs this field only remains a fallback for radios
+		 * without their own SSID, so hide it unless the shared SSID is the
+		 * one actually configured.  MLO always uses the shared SSID.
+		 */
+		o.depends({ mlo: '0', ssid_mode: 'separate', wifi_radio: /^[^,]+,[^,]+$/, '!reverse': true });
 
-		o = s.taboption('setup', form.MultiValue, 'wifi_radio', _('Regular AP Radio'), _('Select one or two radios (2.4 GHz, 5 GHz and 6 GHz) for the regular WiFi access point. All selected radios use the same SSID.'));
+		o = s.taboption('setup', form.MultiValue, 'wifi_radio', _('Regular AP Radio'), _('Select one or two radios (2.4 GHz, 5 GHz and 6 GHz) for the regular WiFi access point. The SSID for each radio can be configured below.'));
 
 		for (const [ value, label ] of this.apRadios)
 			o.value(value, label);
@@ -337,6 +349,28 @@ return view.extend({
 		o = s.taboption('setup', form.Flag, 'mlo', _('Enable MLO'), _('Combine the two selected radios into one Wi-Fi 7 Multi-Link Operation (MLO) access point. The selected radios are switched to EHT mode.'));
 		o.default = '0';
 		o.depends('wifi_radio', /^[^,]+,[^,]+$/);
+
+		o = s.taboption('setup', form.ListValue, 'ssid_mode', _('SSID Mode'), _('Choose whether the selected radios share one SSID or use a separate SSID per radio. Separate SSIDs disable seamless 802.11r roaming between the radios.'));
+		o.value('same', _('Same SSID'));
+		o.value('separate', _('Separate SSIDs'));
+		o.default = 'same';
+		o.depends({ mlo: '0', wifi_radio: /^[^,]+,[^,]+$/ });
+
+		const bandNames = { '2g': '2.4 GHz', '5g': '5 GHz', '6g': '6 GHz' };
+
+		for (const [ value ] of this.apRadios) {
+			const band = bandNames[uci.get('wireless', value, 'band')];
+			const radioLabel = band ? '%s (%s)'.format(value, band) : value;
+
+			o = s.taboption('setup', form.Value, 'wifi_id_' + value,
+				_('SSID for %s').format(radioLabel),
+				_('SSID used by this radio when separate SSIDs are enabled. Leave empty to use the shared SSID.'));
+			o.depends({
+				mlo: '0',
+				ssid_mode: 'separate',
+				wifi_radio: new RegExp('(^|,)' + value + '(,|$)')
+			});
+		}
 
 		o = s.taboption('setup', form.ListValue, 'apRadio', _('Mesh Radio'), _('Select one radio interface for mesh backhaul traffic.'));
 		for (const [ value, label ] of this.radios)
@@ -470,6 +504,17 @@ return view.extend({
 				'style': 'white-space:pre-wrap;word-break:break-word;max-height:60vh;overflow:auto;margin:1rem 0 0 0.5rem;padding-bottom:0.5rem'
 			}, [ this.logText || _('No log entries.') ]);
 
+			const refreshLog = ui.createHandlerFn(this, function() {
+				return fs.read(LOG_FILE).then((text) => {
+					this.logText = text || '';
+					logContent.textContent = this.logText || _('No log entries.');
+				}).catch(function(err) {
+					ui.addNotification(null, E('p', [
+						_('Failed to refresh the log: %s').format(err)
+					]), 'error');
+				});
+			});
+
 			const clearLog = ui.createHandlerFn(this, function() {
 				return fs.exec(SCRIPT, [ 'clearlog' ]).then(() => {
 					this.logText = '';
@@ -487,6 +532,11 @@ return view.extend({
 			}, [
 				E('div', { 'class': 'cbi-section' }, [
 					E('div', { 'style': 'margin-bottom:0.5rem' }, [
+						E('button', {
+							'class': 'btn cbi-button cbi-button-action',
+							'style': 'margin:0.5rem 0 0 0.5rem',
+							'click': refreshLog
+						}, [ _('Refresh Log') ]),
 						E('button', {
 							'class': 'btn cbi-button cbi-button-remove',
 							'style': 'margin:0.5rem 0 0 0.5rem',
