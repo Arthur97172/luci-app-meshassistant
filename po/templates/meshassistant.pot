@@ -29,6 +29,9 @@ msgstr ""
 msgid "Choose whether this device is a Server, Client, or Node in the mesh network."
 msgstr ""
 
+msgid "Clear Log"
+msgstr ""
+
 msgid "Client"
 msgstr ""
 
@@ -54,6 +57,9 @@ msgid "Ensure that the SSID is the same across all the servers/nodes in your mes
 msgstr ""
 
 msgid "Failed to apply mesh settings: %s"
+msgstr ""
+
+msgid "Failed to clear the log: %s"
 msgstr ""
 
 msgid "Frequency"
@@ -122,6 +128,9 @@ msgstr ""
 msgid "Mobility Domain"
 msgstr ""
 
+msgid "No log entries."
+msgstr ""
+
 msgid "No neighbor nodes found."
 msgstr ""
 
@@ -150,6 +159,9 @@ msgid "Reapply meshassistant Settings"
 msgstr ""
 
 msgid "Remote Hosts"
+msgstr ""
+
+msgid "Run Log"
 msgstr ""
 
 msgid "Select at least one radio."

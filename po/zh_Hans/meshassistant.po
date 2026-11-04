@@ -31,6 +31,9 @@ msgstr "选择节点使用 DHCP 还是静态 IP"
 msgid "Choose whether this device is a Server, Client, or Node in the mesh network."
 msgstr "选择此设备在 Mesh 网络中作为服务器、客户端还是节点。"
 
+msgid "Clear Log"
+msgstr "清空日志"
+
 msgid "Client"
 msgstr "客户端"
 
@@ -57,6 +60,9 @@ msgstr "确保 Mesh 网络中所有服务器/节点使用相同的 SSID。"
 
 msgid "Failed to apply mesh settings: %s"
 msgstr "应用 Mesh 设置失败：%s"
+
+msgid "Failed to clear the log: %s"
+msgstr "清空日志失败：%s"
 
 msgid "Frequency"
 msgstr "频率"
@@ -124,6 +130,9 @@ msgstr "Mesh 设置正在后台应用。"
 msgid "Mobility Domain"
 msgstr "移动域"
 
+msgid "No log entries."
+msgstr "暂无日志。"
+
 msgid "No neighbor nodes found."
 msgstr "未找到邻居节点。"
 
@@ -153,6 +162,9 @@ msgstr "重新应用 MESH助手设置"
 
 msgid "Remote Hosts"
 msgstr "远程主机"
+
+msgid "Run Log"
+msgstr "运行日志"
 
 msgid "Select at least one radio."
 msgstr "请至少选择一个射频。"

@@ -9,12 +9,13 @@ MESHASSISTANT_PORT=47123
 MESHASSISTANT_PEERS=/tmp/meshassistant_peers
 MESHASSISTANT_PEER_MAX_AGE=120
 MESHASSISTANT_ANNOUNCE_INTERVAL=10
+MESHASSISTANT_LOG=/tmp/meshassistant.log
 
 # Return immediately from LuCI RPC calls: wifi/network restarts may take
 # longer than the RPC timeout and can drop the current browser connection.
 if [ "$1" = "--detach" ]; then
     shift
-    /meshassistant/meshassistant.sh "$@" >/tmp/meshassistant.log 2>&1 &
+    /meshassistant/meshassistant.sh "$@" >"$MESHASSISTANT_LOG" 2>&1 &
     exit 0
 fi
 
@@ -1257,6 +1258,12 @@ link_info() {
         done
 }
 
+# Truncate the run log shown by the "Run Log" tab.  Keep the file so the
+# LuCI page can read it without treating a missing file as an error.
+clear_log() {
+    : > "$MESHASSISTANT_LOG"
+}
+
 # Enable meshassistant
 enable_meshassistant() {
     # This implementation supports one mesh radio.  Reject a multi-value
@@ -1344,6 +1351,11 @@ fi
 
 if [ "$1" = "linkinfo" ]; then
     link_info
+    exit 0
+fi
+
+if [ "$1" = "clearlog" ]; then
+    clear_log
     exit 0
 fi
 

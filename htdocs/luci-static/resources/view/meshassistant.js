@@ -10,6 +10,7 @@
 const BATCTL = '/usr/sbin/batctl';
 const SCRIPT = '/meshassistant/meshassistant.sh';
 const PEERS_FILE = '/tmp/meshassistant_peers';
+const LOG_FILE = '/tmp/meshassistant.log';
 
 const callLanStatus = rpc.declare({
 	object: 'network.interface',
@@ -212,6 +213,7 @@ return view.extend({
 	apRadios: [],
 	wiredPorts: [],
 	status: { ok: true, rows: [] },
+	logText: '',
 	lanDefaults: { ipaddr: '', netmask: '', gateway: '', dns: '' },
 
 	load() {
@@ -228,9 +230,10 @@ return view.extend({
 				network.getHostHints().catch(() => null),
 				callLanStatus('lan').catch(() => null),
 				fs.read(PEERS_FILE).catch(() => ''),
-				fs.exec(SCRIPT, [ 'linkinfo' ]).catch(() => null)
+				fs.exec(SCRIPT, [ 'linkinfo' ]).catch(() => null),
+				fs.read(LOG_FILE).catch(() => '')
 			]);
-		}).then(([ devices, reply, ttReply, datReply, hosts, lanStatus, peers, linkReply ]) => {
+		}).then(([ devices, reply, ttReply, datReply, hosts, lanStatus, peers, linkReply, logText ]) => {
 			this.radios = devices.length
 				? radioOptions(devices)
 				: uci.sections('wireless', 'wifi-device').map(function(s) {
@@ -255,6 +258,7 @@ return view.extend({
 				this.wiredPorts.unshift([ current, current ]);
 
 			this.status = utils.parseStatus(reply, ttReply, datReply, hosts, peers, linkReply);
+			this.logText = logText || '';
 			this.lanDefaults = utils.lanDefaults(lanStatus, uci.get('network', 'lan') || {});
 		});
 	},
@@ -424,7 +428,7 @@ return view.extend({
 		});
 		o.depends('role', /^(off|client)$/);
 
-		return m.render().then(function(mapEl) {
+		return m.render().then((mapEl) => {
 			const settingsEl = E('div', {
 				'data-tab': 'settings',
 				'data-tab-title': _('Mesh Settings'),
@@ -436,12 +440,43 @@ return view.extend({
 				'data-tab-title': _('Mesh Status')
 			}, [ statusEl ]);
 
+			const logContent = E('pre', {
+				'style': 'white-space:pre-wrap;word-break:break-word;max-height:60vh;overflow:auto;margin:1rem 0 0 0.5rem;padding-bottom:0.5rem'
+			}, [ this.logText || _('No log entries.') ]);
+
+			const clearLog = ui.createHandlerFn(this, function() {
+				return fs.exec(SCRIPT, [ 'clearlog' ]).then(() => {
+					this.logText = '';
+					logContent.textContent = _('No log entries.');
+				}).catch(function(err) {
+					ui.addNotification(null, E('p', [
+						_('Failed to clear the log: %s').format(err)
+					]), 'error');
+				});
+			});
+
+			const logPane = E('div', {
+				'data-tab': 'log',
+				'data-tab-title': _('Run Log')
+			}, [
+				E('div', { 'class': 'cbi-section' }, [
+					E('div', { 'style': 'margin-bottom:0.5rem' }, [
+						E('button', {
+							'class': 'btn cbi-button cbi-button-remove',
+							'style': 'margin:0.5rem 0 0 0.5rem',
+							'click': clearLog
+						}, [ _('Clear Log') ])
+					]),
+					logContent
+				])
+			]);
+
 			/*
 			 * Argon zeroes the top margin of the element that follows the tab
 			 * menu, so set the gap inline; the theme rules cannot override it.
 			 */
 			const tabsEl = E('div', { 'style': 'margin-block-start: 0.5rem' },
-				[ settingsEl, statusPane ]);
+				[ settingsEl, statusPane, logPane ]);
 			const pageEl = E('div', {}, [ tabsEl ]);
 
 			ui.tabs.initTabGroup(tabsEl.childNodes);

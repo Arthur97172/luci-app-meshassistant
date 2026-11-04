@@ -12,7 +12,8 @@
 				"/usr/sbin/batctl meshif bat0 transtable_global_json": [ "exec" ],
 				"/usr/sbin/batctl meshif bat0 dat_cache_json": [ "exec" ],
 				"/meshassistant/meshassistant.sh linkinfo": [ "exec" ],
-				"/tmp/meshassistant_peers": [ "read" ]
+				"/tmp/meshassistant_peers": [ "read" ],
+				"/tmp/meshassistant.log": [ "read" ]
 			},
 			"uci": [ "meshassistant", "network", "wireless" ]
 		},
@@ -22,7 +23,8 @@
 			},
 			"file": {
 				"/meshassistant/meshassistant.sh --detach": [ "exec" ],
-				"/meshassistant/meshassistant.sh --detach dumbap": [ "exec" ]
+				"/meshassistant/meshassistant.sh --detach dumbap": [ "exec" ],
+				"/meshassistant/meshassistant.sh clearlog": [ "exec" ]
 			},
 			"uci": [ "meshassistant" ]
 		}
