@@ -20,7 +20,13 @@ msgstr ""
 msgid "Cancel"
 msgstr ""
 
+msgid "Channel"
+msgstr ""
+
 msgid "Channel Utilization"
+msgstr ""
+
+msgid "Channel Width"
 msgstr ""
 
 msgid "Choose if the node uses DHCP or a Static IP"
@@ -93,9 +99,6 @@ msgid "K/V/R"
 msgstr ""
 
 msgid "Keep this enabled when the Mesh server is the only gateway and should provide DHCP and IPv6 RA for the LAN. Disable it when another router on the LAN already provides DHCP: the server then keeps the gateway and DNS role but stops its own DHCP/RA server."
-msgstr ""
-
-msgid "Last Seen Timestamp"
 msgstr ""
 
 msgid "Leave these settings as default unless you know what you are doing."

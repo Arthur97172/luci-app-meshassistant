@@ -130,11 +130,12 @@ function statusTable(rows) {
 		_('IP Address'),
 		_('Interface'),
 		_('Frequency'),
+		_('Channel'),
+		_('Channel Width'),
 		_('Signal Strength'),
 		_('Load'),
 		_('Channel Utilization'),
-		_('Link Rate'),
-		_('Last Seen Timestamp')
+		_('Link Rate')
 	];
 
 	const table = E('div', { 'class': 'table' }, [
@@ -153,11 +154,12 @@ function statusTable(rows) {
 			]),
 			E('div', { 'class': 'td' }, [ row.iface || '-' ]),
 			E('div', { 'class': 'td' }, [ row.frequency || '-' ]),
+			E('div', { 'class': 'td' }, [ row.channel || '-' ]),
+			E('div', { 'class': 'td' }, [ row.width || '-' ]),
 			E('div', { 'class': 'td' }, [ row.signal || '-' ]),
 			E('div', { 'class': 'td' }, [ row.load || '-' ]),
-			E('div', { 'class': 'td' }, [ row.channel || '-' ]),
-			E('div', { 'class': 'td' }, [ row.speed ? row.speed + ' Mbps' : '-' ]),
-			E('div', { 'class': 'td' }, [ row.lastSeen || '-' ])
+			E('div', { 'class': 'td' }, [ row.utilization || '-' ]),
+			E('div', { 'class': 'td' }, [ row.speed ? row.speed + ' Mbps' : '-' ])
 		]));
 	}
 

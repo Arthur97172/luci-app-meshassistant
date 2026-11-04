@@ -364,9 +364,12 @@ return baseclass.extend({
 	},
 
 	// "linkinfo" output of the helper script.  The radio driver reports the
-	// channel of a hardif and the signal of each station; the app merges them
-	// with the neighbor rows by interface name and MAC.  Missing values are
-	// simply absent, which is normal for a wired backhaul.
+	// frequency, channel and width of a hardif and the signal of each
+	// station; the app merges them with the neighbor rows by interface name
+	// and MAC.  Missing values are simply absent, which is normal for a wired
+	// backhaul.  The channel and width follow the frequency and may be
+	// missing when the driver does not expose them:
+	//   iface <hardif> <MHz> [<channel> <width MHz>]
 	parseLinkInfo(reply) {
 		const links = {};
 
@@ -379,6 +382,8 @@ return baseclass.extend({
 			if (parts[0] === 'iface' && parts.length >= 3) {
 				const iface = clean(parts[1]);
 				const frequency = Number(parts[2]);
+				const channel = Number(parts[3]);
+				const width = Number(parts[4]);
 
 				if (!iface || !Number.isFinite(frequency) || frequency <= 0)
 					continue;
@@ -386,6 +391,10 @@ return baseclass.extend({
 				if (!links[iface])
 					links[iface] = {};
 				links[iface].frequency = frequency;
+				if (Number.isInteger(channel) && channel > 0)
+					links[iface].channel = channel;
+				if (Number.isFinite(width) && width > 0)
+					links[iface].width = width;
 			}
 			else if (parts[0] === 'busy' && parts.length >= 3) {
 				const iface = clean(parts[1]);
@@ -462,10 +471,10 @@ return baseclass.extend({
 		return { iface: iface, neighbor: mac };
 	},
 
-	// Attach the radio frequency, channel utilization and the peer signal to
-	// every neighbor row.  All three depend on the hardif named by "batctl n":
-	// a wired backhaul has no channel and no station signal, so those cells
-	// stay empty.
+	// Attach the radio frequency, channel, width, channel utilization and the
+	// peer signal to every neighbor row.  They all depend on the hardif named
+	// by "batctl n": a wired backhaul has no radio settings and no station
+	// signal, so those cells stay empty.
 	annotateLinks(rows, links) {
 		links = links || {};
 
@@ -476,7 +485,9 @@ return baseclass.extend({
 			const signal = mac && link.signals ? link.signals[mac] : null;
 
 			row.frequency = link.frequency ? link.frequency + ' MHz' : '';
-			row.channel = link.busy == null ? '' : link.busy + '%';
+			row.channel = link.channel ? String(link.channel) : '';
+			row.width = link.width ? link.width + ' MHz' : '';
+			row.utilization = link.busy == null ? '' : link.busy + '%';
 			row.signal = signal == null ? '' : signal + ' dBm';
 		}
 
@@ -520,10 +531,9 @@ return baseclass.extend({
 	},
 
 	// The local device has no link to itself.  Its row mirrors the neighbor
-	// link with the strongest signal, so the signal, link rate and last-seen
-	// columns carry the same kind of values as the remote rows.  A wired
-	// backhaul has no signal; the first neighbor then supplies the rate and
-	// last-seen values.
+	// link with the strongest signal, so the signal and link rate columns
+	// carry the same kind of values as the remote rows.  A wired backhaul has
+	// no signal; the first neighbor then supplies the link rate.
 	strongestLink(rows) {
 		let best = null;
 		let bestSignal = -Infinity;
@@ -545,8 +555,8 @@ return baseclass.extend({
 
 	// Build the "Local Host" row: the identity of this device.  The hostname,
 	// LAN address and load come from the "linkinfo" helper; the hardif and its
-	// MAC from the "batctl n" header.  Signal, link rate and last-seen are not
-	// measured for the device itself, so they mirror its best neighbor link.
+	// MAC from the "batctl n" header.  Signal and link rate are not measured
+	// for the device itself, so they mirror its best neighbor link.
 	parseLocalRow(statusStdout, linkReply, rows) {
 		const info = this.parseLocalInfo(linkReply);
 
@@ -564,9 +574,11 @@ return baseclass.extend({
 			ips: info.ip ? [ info.ip ] : [],
 			iface: identity.iface || '',
 			frequency: link.frequency ? link.frequency + ' MHz' : '',
+			channel: link.channel ? String(link.channel) : '',
+			width: link.width ? link.width + ' MHz' : '',
 			signal: peer ? (peer.signal || '') : '',
 			load: info.load || '',
-			channel: link.busy == null ? '' : link.busy + '%',
+			utilization: link.busy == null ? '' : link.busy + '%',
 			speed: peer ? (peer.speed || '') : '',
 			lastSeen: peer ? (peer.lastSeen || '') : ''
 		};

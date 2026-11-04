@@ -22,8 +22,14 @@ msgstr "基础设置"
 msgid "Cancel"
 msgstr "取消"
 
+msgid "Channel"
+msgstr "信道"
+
 msgid "Channel Utilization"
 msgstr "信道占用率"
+
+msgid "Channel Width"
+msgstr "通道宽度"
 
 msgid "Choose if the node uses DHCP or a Static IP"
 msgstr "选择节点使用 DHCP 还是静态 IP"
@@ -96,9 +102,6 @@ msgstr "K/V/R"
 
 msgid "Keep this enabled when the Mesh server is the only gateway and should provide DHCP and IPv6 RA for the LAN. Disable it when another router on the LAN already provides DHCP: the server then keeps the gateway and DNS role but stops its own DHCP/RA server."
 msgstr "当 Mesh 服务器是唯一网关并为 LAN 提供 DHCP 和 IPv6 RA 时，请保持启用。若 LAN 上已有其他路由器提供 DHCP，请关闭此项：服务器仍保留网关和 DNS 角色，但会停止自身的 DHCP/RA 服务。"
-
-msgid "Last Seen Timestamp"
-msgstr "最后发现时间"
 
 msgid "Leave these settings as default unless you know what you are doing."
 msgstr "除非你了解相关设置，否则请保持默认值。"

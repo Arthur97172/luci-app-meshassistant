@@ -1377,9 +1377,10 @@ daemon_meshassistant() {
 # knows the channel, its busy time and the signal of each station.  Print one
 # value per line so the LuCI view can merge it with the neighbor rows without
 # parsing iw's multi-line output:
-#   iface <hardif> <MHz>
+#   iface <hardif> <MHz> <channel> <width MHz>
 #   busy <hardif> <percent>
 #   peer <hardif> <MAC> <dBm>
+# The channel and width are omitted when the driver does not report them.
 # It also prints the identity of this device for the "Local Host" row:
 #   local <hostname> <IPv4|-> <load|->
 link_info() {
@@ -1393,10 +1394,18 @@ link_info() {
         | sed -n 's/^\([^:]*\):.*/\1/p' \
         | while read -r iface; do
             [ -n "$iface" ] || continue
-            freq=$(iw dev "$iface" info 2>/dev/null \
-                | sed -n 's/.*channel [0-9][0-9]* (\([0-9][0-9]*\) MHz).*/\1/p' \
+            # iw prints "channel 37 (6135 MHz), width: 320 MHz".
+            info=$(iw dev "$iface" info 2>/dev/null)
+            link=$(printf '%s\n' "$info" \
+                | sed -n 's/.*channel \([0-9][0-9]*\) (\([0-9][0-9]*\) MHz), width: \([0-9][0-9]*\) MHz.*/\2 \1 \3/p' \
                 | head -n 1)
-            [ -n "$freq" ] && printf 'iface %s %s\n' "$iface" "$freq"
+            if [ -z "$link" ]; then
+                # Older drivers omit the width; keep reporting the frequency.
+                link=$(printf '%s\n' "$info" \
+                    | sed -n 's/.*channel [0-9][0-9]* (\([0-9][0-9]*\) MHz).*/\1/p' \
+                    | head -n 1)
+            fi
+            [ -n "$link" ] && printf 'iface %s %s\n' "$iface" "$link"
             busy=$(iw dev "$iface" survey dump 2>/dev/null | awk '
                 /^[[:space:]]*frequency:/ { inuse = ($0 ~ /\[in use\]/); next }
                 inuse && /channel active time:/ { active = $4 }
