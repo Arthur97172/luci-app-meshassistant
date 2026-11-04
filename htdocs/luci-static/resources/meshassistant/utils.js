@@ -417,6 +417,51 @@ return baseclass.extend({
 		return links;
 	},
 
+	// "linkinfo" also prints one line identifying this device:
+	//   local <hostname> <IPv4|-> <load|->
+	// The hostname and load are the same values the daemon announces to the
+	// other mesh devices.
+	parseLocalInfo(reply) {
+		if (!reply || reply.code !== 0)
+			return null;
+
+		for (let line of String(reply.stdout == null ? '' : reply.stdout).split(/\r?\n/)) {
+			const parts = line.trim().split(/\s+/);
+
+			if (parts[0] !== 'local' || parts.length < 4)
+				continue;
+
+			const hostname = clean(parts[1]);
+			const ip = this.ipv4(parts[2]);
+			const load = /^\d+(\.\d+)?$/.test(clean(parts[3])) ? clean(parts[3]) : '';
+
+			if (!hostname)
+				continue;
+
+			return { hostname: hostname, ip: ip, load: load };
+		}
+
+		return null;
+	},
+
+	// The "batctl n" header names the primary mesh interface and its MAC:
+	// "[..., MainIF/MAC: mesh_radio0/02:58:28:12:81:52 (bat0/...)]".
+	parseLocalIdentity(stdout) {
+		const m = /MainIF\/MAC:\s*([^\/\s]+)\/([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})/.exec(
+			String(stdout == null ? '' : stdout));
+
+		if (!m)
+			return null;
+
+		const iface = clean(m[1]);
+		const mac = this.macKey(m[2]);
+
+		if (!iface || !mac)
+			return null;
+
+		return { iface: iface, neighbor: mac };
+	},
+
 	// Attach the radio frequency, channel utilization and the peer signal to
 	// every neighbor row.  All three depend on the hardif named by "batctl n":
 	// a wired backhaul has no channel and no station signal, so those cells
@@ -474,9 +519,62 @@ return baseclass.extend({
 		return rows;
 	},
 
+	// The local device has no link to itself.  Its row mirrors the neighbor
+	// link with the strongest signal, so the signal, link rate and last-seen
+	// columns carry the same kind of values as the remote rows.  A wired
+	// backhaul has no signal; the first neighbor then supplies the rate and
+	// last-seen values.
+	strongestLink(rows) {
+		let best = null;
+		let bestSignal = -Infinity;
+
+		for (const row of rows || []) {
+			const signal = parseInt(row && row.signal, 10);
+
+			if (!Number.isFinite(signal))
+				continue;
+
+			if (signal > bestSignal) {
+				bestSignal = signal;
+				best = row;
+			}
+		}
+
+		return best || (rows && rows.length ? rows[0] : null);
+	},
+
+	// Build the "Local Host" row: the identity of this device.  The hostname,
+	// LAN address and load come from the "linkinfo" helper; the hardif and its
+	// MAC from the "batctl n" header.  Signal, link rate and last-seen are not
+	// measured for the device itself, so they mirror its best neighbor link.
+	parseLocalRow(statusStdout, linkReply, rows) {
+		const info = this.parseLocalInfo(linkReply);
+
+		if (!info)
+			return null;
+
+		const identity = this.parseLocalIdentity(statusStdout) || {};
+		const links = this.parseLinkInfo(linkReply);
+		const link = links[identity.iface] || {};
+		const peer = this.strongestLink(rows);
+
+		return {
+			hostname: info.hostname,
+			neighbor: identity.neighbor || '',
+			ips: info.ip ? [ info.ip ] : [],
+			iface: identity.iface || '',
+			frequency: link.frequency ? link.frequency + ' MHz' : '',
+			signal: peer ? (peer.signal || '') : '',
+			load: info.load || '',
+			channel: link.busy == null ? '' : link.busy + '%',
+			speed: peer ? (peer.speed || '') : '',
+			lastSeen: peer ? (peer.lastSeen || '') : ''
+		};
+	},
+
 	parseStatus(reply, ttReply, datReply, hostHints, peerText, linkReply) {
 		if (!reply || reply.code !== 0)
-			return { ok: false, rows: [] };
+			return { ok: false, rows: [], local: null };
 
 		const rows = this.parseNeighbors(reply.stdout);
 
@@ -487,6 +585,10 @@ return baseclass.extend({
 		this.annotatePeers(rows, this.parsePeers(peerText));
 		this.annotateLinks(rows, this.parseLinkInfo(linkReply));
 
-		return { ok: true, rows: rows };
+		return {
+			ok: true,
+			rows: rows,
+			local: this.parseLocalRow(reply.stdout, linkReply, rows)
+		};
 	}
 });

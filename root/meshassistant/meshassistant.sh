@@ -1103,6 +1103,25 @@ mesh_hardif_macs() {
     done
 }
 
+# Hostname and 1-minute load average, cleaned for the space-separated
+# announcement and status lines.  "-" marks a value that could not be read.
+local_hostname() {
+    local hostname
+    hostname=$(uci -q get system.@system[0].hostname)
+    [ -n "$hostname" ] || hostname=$(cat /proc/sys/kernel/hostname 2>/dev/null)
+    hostname=$(printf '%s' "$hostname" | tr -cd 'A-Za-z0-9._-')
+    printf '%s\n' "${hostname:--}"
+}
+
+local_load() {
+    local load
+    load=$(cut -d' ' -f1 /proc/loadavg 2>/dev/null)
+    case "$load" in
+        ''|*[!0-9.]*|*.*.*) load='-' ;;
+    esac
+    printf '%s\n' "$load"
+}
+
 announce_identity() {
     local ip brd hostname load mac
     ip=$(lan_ipv4)
@@ -1111,17 +1130,11 @@ announce_identity() {
     brd=$(lan_broadcast)
     [ -n "$brd" ] || brd=255.255.255.255
 
-    hostname=$(uci -q get system.@system[0].hostname)
-    [ -n "$hostname" ] || hostname=$(cat /proc/sys/kernel/hostname 2>/dev/null)
-    hostname=$(printf '%s' "$hostname" | tr -cd 'A-Za-z0-9._-')
-    [ -n "$hostname" ] || hostname='-'
+    hostname=$(local_hostname)
 
     # Version 2 appends the 1-minute load average.  Older receivers drop
     # unknown versions, so they never mistake the extra field for a hostname.
-    load=$(cut -d' ' -f1 /proc/loadavg 2>/dev/null)
-    case "$load" in
-        ''|*[!0-9.]*|*.*.*) load='-' ;;
-    esac
+    load=$(local_load)
 
     for mac in $(mesh_hardif_macs); do
         printf 'meshassistant/2 %s %s %s %s\n' "$mac" "$ip" "$hostname" "$load" \
@@ -1209,7 +1222,13 @@ daemon_meshassistant() {
 #   iface <hardif> <MHz>
 #   busy <hardif> <percent>
 #   peer <hardif> <MAC> <dBm>
+# It also prints the identity of this device for the "Local Host" row:
+#   local <hostname> <IPv4|-> <load|->
 link_info() {
+    local ip
+    ip=$(lan_ipv4)
+    printf 'local %s %s %s\n' "$(local_hostname)" "${ip:--}" "$(local_load)"
+
     command -v iw >/dev/null 2>&1 || return 0
 
     batctl meshif bat0 interface 2>/dev/null \

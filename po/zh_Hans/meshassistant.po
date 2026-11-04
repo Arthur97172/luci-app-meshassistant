@@ -94,6 +94,9 @@ msgstr "链路速率"
 msgid "Load"
 msgstr "负载"
 
+msgid "Local Host"
+msgstr "本机"
+
 msgid "Mesh Gateway IP Address"
 msgstr "Mesh 网关 IP 地址"
 
@@ -121,9 +124,6 @@ msgstr "Mesh 设置正在后台应用。"
 msgid "Mobility Domain"
 msgstr "移动域"
 
-msgid "Neighbor Nodes"
-msgstr "邻居节点"
-
 msgid "No neighbor nodes found."
 msgstr "未找到邻居节点。"
 
@@ -132,6 +132,9 @@ msgstr "节点"
 
 msgid "Node Hostname"
 msgstr "节点主机名"
+
+msgid "Node MAC"
+msgstr "节点MAC"
 
 msgid "None (wireless backhaul only)"
 msgstr "无（仅无线回程）"

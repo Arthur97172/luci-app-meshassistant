@@ -92,6 +92,9 @@ msgstr ""
 msgid "Load"
 msgstr ""
 
+msgid "Local Host"
+msgstr ""
+
 msgid "Mesh Gateway IP Address"
 msgstr ""
 
@@ -119,9 +122,6 @@ msgstr ""
 msgid "Mobility Domain"
 msgstr ""
 
-msgid "Neighbor Nodes"
-msgstr ""
-
 msgid "No neighbor nodes found."
 msgstr ""
 
@@ -129,6 +129,9 @@ msgid "Node"
 msgstr ""
 
 msgid "Node Hostname"
+msgstr ""
+
+msgid "Node MAC"
 msgstr ""
 
 msgid "None (wireless backhaul only)"

@@ -109,6 +109,54 @@ function wiredPortOptions() {
 	return choices;
 }
 
+function statusSubtitle(title) {
+	return E('div', {
+		'class': 'cbi-section-descr',
+		'style': 'font-size:0.95rem;font-weight:bold'
+	}, [ title ]);
+}
+
+function statusTable(rows) {
+	const titles = [
+		_('Node Hostname'),
+		_('Node MAC'),
+		_('IP Address'),
+		_('Interface'),
+		_('Frequency'),
+		_('Signal Strength'),
+		_('Load'),
+		_('Channel Utilization'),
+		_('Link Rate'),
+		_('Last Seen Timestamp')
+	];
+
+	const table = E('div', { 'class': 'table' }, [
+		E('div', { 'class': 'tr table-titles' },
+			titles.map(function(title) {
+				return E('div', { 'class': 'th' }, [ title ]);
+			}))
+	]);
+
+	for (const row of rows) {
+		table.appendChild(E('div', { 'class': 'tr' }, [
+			E('div', { 'class': 'td' }, [ row.hostname || '-' ]),
+			E('div', { 'class': 'td' }, [ row.neighbor || '-' ]),
+			E('div', { 'class': 'td' }, [
+				row.ips && row.ips.length ? row.ips.join(', ') : '-'
+			]),
+			E('div', { 'class': 'td' }, [ row.iface || '-' ]),
+			E('div', { 'class': 'td' }, [ row.frequency || '-' ]),
+			E('div', { 'class': 'td' }, [ row.signal || '-' ]),
+			E('div', { 'class': 'td' }, [ row.load || '-' ]),
+			E('div', { 'class': 'td' }, [ row.channel || '-' ]),
+			E('div', { 'class': 'td' }, [ row.speed ? row.speed + ' Mbps' : '-' ]),
+			E('div', { 'class': 'td' }, [ row.lastSeen || '-' ])
+		]));
+	}
+
+	return table;
+}
+
 function renderStatus(status) {
 	const rows = status.rows;
 	const children = [
@@ -117,57 +165,31 @@ function renderStatus(status) {
 			E('strong', {}, [
 				_('Number of Active Nodes: %d').format(rows.length)
 			])
-		]),
-		E('div', {
-			'class': 'cbi-section-descr',
-			'style': 'font-size:0.95rem;font-weight:bold'
-		}, [ _('Remote Hosts') ])
+		])
 	];
 
 	if (!status.ok) {
 		children.push(E('div', { 'class': 'alert-message error' }, [
 			_('Unable to read mesh status.')
 		]));
+
+		return E('div', { 'class': 'cbi-section' }, children);
 	}
-	else if (rows.length === 0) {
+
+	children.push(statusSubtitle(_('Remote Hosts')));
+
+	if (rows.length === 0) {
 		children.push(E('div', { 'class': 'cbi-section-descr' }, [
 			_('No neighbor nodes found.')
 		]));
 	}
 	else {
-		const table = E('div', { 'class': 'table' }, [
-			E('div', { 'class': 'tr table-titles' }, [
-				E('div', { 'class': 'th' }, [ _('Node Hostname') ]),
-				E('div', { 'class': 'th' }, [ _('Neighbor Nodes') ]),
-				E('div', { 'class': 'th' }, [ _('IP Address') ]),
-				E('div', { 'class': 'th' }, [ _('Interface') ]),
-				E('div', { 'class': 'th' }, [ _('Frequency') ]),
-				E('div', { 'class': 'th' }, [ _('Signal Strength') ]),
-				E('div', { 'class': 'th' }, [ _('Load') ]),
-				E('div', { 'class': 'th' }, [ _('Channel Utilization') ]),
-				E('div', { 'class': 'th' }, [ _('Link Rate') ]),
-				E('div', { 'class': 'th' }, [ _('Last Seen Timestamp') ])
-			])
-		]);
+		children.push(statusTable(rows));
+	}
 
-		for (const row of rows) {
-			table.appendChild(E('div', { 'class': 'tr' }, [
-				E('div', { 'class': 'td' }, [ row.hostname || '-' ]),
-				E('div', { 'class': 'td' }, [ row.neighbor ]),
-				E('div', { 'class': 'td' }, [
-					row.ips && row.ips.length ? row.ips.join(', ') : '-'
-				]),
-				E('div', { 'class': 'td' }, [ row.iface || '-' ]),
-				E('div', { 'class': 'td' }, [ row.frequency || '-' ]),
-				E('div', { 'class': 'td' }, [ row.signal || '-' ]),
-				E('div', { 'class': 'td' }, [ row.load || '-' ]),
-				E('div', { 'class': 'td' }, [ row.channel || '-' ]),
-				E('div', { 'class': 'td' }, [ row.speed ? row.speed + ' Mbps' : '-' ]),
-				E('div', { 'class': 'td' }, [ row.lastSeen ])
-			]));
-		}
-
-		children.push(table);
+	if (status.local) {
+		children.push(statusSubtitle(_('Local Host')));
+		children.push(statusTable([ status.local ]));
 	}
 
 	return E('div', { 'class': 'cbi-section' }, children);
