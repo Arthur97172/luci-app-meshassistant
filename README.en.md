@@ -28,6 +28,7 @@ The package lives under **Network → Mesh Assistant**
 | Wired backhaul | Optionally dedicate one LAN port to the mesh: wired is used while the cable is connected, and the mesh radio takes over when it is not |
 | Mesh status | Reads `batctl n`, `iw` plus the Batman-adv translation table and DAT cache, and shows the active node count plus the remote and local host rows: interface, node MAC, the IP addresses of each neighbor and its clients, signal strength, load, channel utilization, link rate and the last-seen time |
 | Background apply | The script detaches from the page and only performs non-destructive network/wireless reloads, so the request cannot time out or drop the browser |
+| Backup management | The **Backup Management** tab creates, restores, deletes and clears whole-configuration snapshots; **Save & Apply** archives the pre-save configuration automatically, and archives live in `/etc/meshassistant/backup` |
 | Dumb AP mode | Turns a node into a dumb access point attached to an existing network (changes the management address; asks for confirmation first) |
 | DHCP reuse | The server can provide or skip DHCP/IPv6 RA, so an existing LAN DHCP server can stay in charge |
 | Internationalization | English and Simplified Chinese; Chinese ships as a separate language pack |
@@ -97,8 +98,10 @@ and `luci-i18n-meshassistant-zh-cn` are produced together.
 4. For wired backhaul, select the connected LAN bridge port under **Wired
    Backhaul Port** on both ends of the cable; keep **None** for wireless-only
    backhaul.
-5. Click **Save & Apply**, then **Reapply meshassistant Settings**. Configure
-   the server before the nodes; the log is at `/tmp/meshassistant.log`.
+5. Click **Save & Apply**, then **Reapply meshassistant Settings**. Saving
+   automatically archives the pre-save configuration under **Backup
+   Management**; configure the server before the nodes; the log is at
+   `/tmp/meshassistant.log`.
 6. Refresh the page and check **Mesh Status** for neighbor nodes.
 
 The detailed field reference, address planning, static-IP rules and
@@ -168,6 +171,39 @@ All three roles support an optional dedicated wired backhaul:
 - If you only need a normal wired uplink, keep **Wired Backhaul Port** at
   **None** and use the port as an ordinary LAN port.
 
+## Backup management
+
+The **Backup Management** tab, immediately before **Run Log**, saves and
+restores the whole network configuration. A backup is a tar archive under
+`/etc/meshassistant/backup/` named like `20261105-143022.tar`, containing the
+`network`, `wireless`, `dhcp`, `firewall`, `system` and `meshassistant`
+configurations plus a manifest with the creation time, hostname, LAN address,
+role and service states.
+
+- **Create Backup** archives the current configuration immediately.
+- **Restore Backup** restores one of the listed archives; when several exist a
+  drop-down lets you choose. The current configuration is archived first, so an
+  unwanted restore can itself be undone.
+- **Delete Backup** removes the selected archive after a confirmation dialog.
+- **Clear Backups** removes every archive after a confirmation dialog.
+
+Besides manual backups, clicking **Save & Apply** archives the configuration
+**as it was before the save**, then writes the form. Clicking **Reapply
+meshassistant Settings** makes the script create a backup before enabling or
+disabling the mesh. Every apply therefore leaves a snapshot; clean old archives
+from the tab when they accumulate.
+
+A restore writes the six configuration files back, restores the recorded enable
+state of `firewall`, `dnsmasq` and `odhcpd` plus the mesh service, and then runs
+`reload_config`, reloads the network and restarts WiFi. **The connection may
+drop during the restore and the management address may change**, so make sure
+you can reach the device over a cable or at the new address. Archives contain
+the WiFi and mesh passwords; keep them private. The directory is mode 0700 and
+the files 0600.
+
+See [section 10 of info/README.en.md](info/README.en.md#10-backup-management)
+for details.
+
 ## Important notes
 
 - **Server**: exactly one server per mesh. It can reach the upstream through its
@@ -191,8 +227,12 @@ All three roles support an optional dedicated wired backhaul:
 The frontend reads UCI and `batctl n`, writes the form to
 `/etc/config/meshassistant`, and executes `/meshassistant/meshassistant.sh`
 through RPC. The browser never assembles shell commands; the rpcd ACL permits
-only `/usr/sbin/batctl n`, `/meshassistant/meshassistant.sh --detach` and
-`/meshassistant/meshassistant.sh --detach dumbap`. UCI access is read-only for
+fixed read-only calls (`/usr/sbin/batctl n`, `linkinfo`, `backup list` and
+similar) and fixed write operations (`--detach`, `--detach dumbap`, `--detach
+backup restore`, `backup create`, `backup delete`, `backup clear`). The archive
+chosen for a restore is passed through the fixed file
+`/tmp/meshassistant_backup_selection`, never interpolated into a command line.
+UCI access is read-only for
 `network` and `wireless`, and write access is limited to `meshassistant`; all
 changes to `network`, `firewall`, `dhcp` and `system` happen inside the root
 script.

@@ -17,6 +17,7 @@ This guide explains how to build a mesh with luci-app-meshassistant: how to choo
 - [7. Verification and troubleshooting](#7-verification-and-troubleshooting)
 - [8. Mesh examples](#8-mesh-examples)
 - [9. Disabling, rolling back and recovery](#9-disabling-rolling-back-and-recovery)
+- [10. Backup management](#10-backup-management)
 
 ## 1. Before you start
 
@@ -48,7 +49,12 @@ cp /etc/config/network /etc/config/wireless /etc/config/dhcp \
    /etc/config/firewall /etc/config/system /root/mesh-backup/
 ```
 
-The plugin also backs up the LAN, hostname and DHCP settings it changes, and restores them when the mesh is disabled. The manual copy is for power loss, mistakes, or a full reinstall.
+The plugin also provides the **Backup Management** tab (see
+[section 10](#10-backup-management)), which creates and restores complete tar
+snapshots and saves one automatically before **Save & Apply**. It additionally
+records and restores the LAN, hostname and DHCP settings it changes while the
+mesh is enabled. The manual copy above is mainly for power loss, mistakes or a
+full reinstall.
 
 ### 1.4 Management connection
 
@@ -99,8 +105,8 @@ K/V/R, Mobility Domain (four hex digits) and the RSSI thresholds tune roaming. L
 
 ### 2.4 Save and apply
 
-1. Click **Save & Apply** at the bottom of the page. This only writes `/etc/config/meshassistant`; it does not touch the network.
-2. Click **Reapply meshassistant Settings**. The script now creates/removes interfaces, changes the LAN, and starts or stops services. Its output goes to `/tmp/meshassistant.log`.
+1. Click **Save & Apply** at the bottom of the page. The page first archives the current configuration (the state **before** the save) under `/etc/meshassistant/backup`, then writes only `/etc/config/meshassistant`; it does not touch the network.
+2. Click **Reapply meshassistant Settings**. The script creates another automatic backup before changing anything, then creates/removes interfaces, changes the LAN, and starts or stops services. Its output goes to `/tmp/meshassistant.log`.
 3. Recommended order: **server first, then nodes**. The server forms the mesh gateway; nodes can only join once it exists.
 4. Networking and wireless restart during the apply, so the page may disconnect briefly. Reconnect and refresh once the restart has finished.
 
@@ -567,6 +573,7 @@ bash /meshassistant/meshassistant.sh undumb
 
 If a misconfiguration makes LuCI unreachable:
 
+- If LuCI is still reachable, restore an earlier archive from **Backup Management** first; the restore restarts networking, so the connection may drop again;
 - Connect a cable to a LAN port and look for the device in the server's DHCP leases;
 - If you know the static address, put your computer in the same subnet and connect directly;
 - Check `/tmp/meshassistant.log` and `logread` (SSH or serial console required);
@@ -574,6 +581,72 @@ If a misconfiguration makes LuCI unreachable:
 - Dumb AP mode can be undone with `undumb`, which restores the five backed-up configuration files.
 
 > Keep a backup before every change, and make sure you have physical access to the device. That is the most effective way to avoid bricking it.
+
+## 10. Backup management
+
+The **Backup Management** tab, immediately before **Run Log**, saves and
+restores the whole network configuration. Day-to-day use needs no SSH.
+
+### 10.1 The four actions
+
+| Button | Behaviour |
+| --- | --- |
+| Create Backup | Archives the current configuration under `/etc/meshassistant/backup` immediately. |
+| Restore Backup | Restores one of the listed archives; when several exist, a drop-down lets you choose. The current configuration is archived first, so an unwanted restore can itself be undone. |
+| Delete Backup | Deletes one selected archive; choose first when several exist, then confirm. |
+| Clear Backups | Deletes every archive; asks for confirmation. |
+
+### 10.2 When backups happen automatically
+
+- Clicking **Save & Apply** archives the current configuration **before** the save is written.
+- Clicking **Reapply meshassistant Settings** makes the script create another backup before enabling or disabling the mesh.
+- Every apply therefore leaves a snapshot; delete or clear old archives from the tab when they accumulate.
+
+### 10.3 Contents and format
+
+- Location: `/etc/meshassistant/backup/`, directory mode 0700.
+- File name: `YYYYMMDD-HHMMSS.tar`; a same-second collision gets a `-1`, `-2`, … suffix. Files are mode 0600.
+- Contents: `etc/config/network`, `wireless`, `dhcp`, `firewall`, `system` and `meshassistant`, plus a `manifest` with the creation time, hostname, LAN address, role, mesh switch and the enable state of `firewall`, `dnsmasq` and `odhcpd`.
+- The archive contains the WiFi and mesh passwords; keep it private and do not hand it to others casually.
+
+### 10.4 Restore workflow
+
+1. In **Backup Management**, click **Restore Backup** and pick the target archive from the drop-down when several exist.
+2. After confirmation the script first creates a safety archive of the current configuration, then validates the chosen archive: only the expected file names are allowed, symbolic links are rejected, and every configuration is syntax-checked with `uci`.
+3. If validation passes, the six files are written back, the recorded enable state of `firewall`, `dnsmasq` and `odhcpd` is restored, and the mesh service is started or stopped according to the archived mesh switch.
+4. Finally it runs `reload_config`, `/etc/init.d/network reload` and `wifi reload`.
+
+The restore runs in the background and writes its output to
+`/tmp/meshassistant.log`. **Networking and wireless restart during the restore,
+so the current connection may drop and the management address may change.**
+Prefer a wired connection, or make sure you know the LAN address stored in the
+archive; if the restored address differs from the one you are using, log in
+again at the new address.
+
+### 10.5 Command-line inspection and emergency restore
+
+Over SSH you can inspect the archives read-only:
+
+```sh
+bash /meshassistant/meshassistant.sh backup list
+ls -l /etc/meshassistant/backup
+tar -tf /etc/meshassistant/backup/20261105-143022.tar
+```
+
+If LuCI is unreachable, you can also extract an archive and copy the files
+manually:
+
+```sh
+mkdir -p /tmp/restore
+tar -xf /etc/meshassistant/backup/<file>.tar -C /tmp/restore
+cp /tmp/restore/etc/config/network /etc/config/network
+# copy wireless, dhcp, firewall, system and meshassistant as needed
+```
+
+A manual restore only writes the configuration files: it does not restore the
+recorded service states and does not reload the network. After copying, run
+`reload_config`, `/etc/init.d/network reload` and `wifi reload`, or simply
+reboot the device.
 
 ---
 

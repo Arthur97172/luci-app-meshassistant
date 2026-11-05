@@ -19,6 +19,7 @@
 | 有线回程 | 可选择专用一个 LAN 口作为 Mesh 有线回程：插网线时使用有线，拔掉后自动改用 Mesh 无线 |
 | Mesh 状态 | 读取 `batctl n`、`iw` 及 Batman-adv 的转换表 / DAT 缓存，显示活动节点数、远程主机与本机信息，包括接口、节点 MAC、邻居及其下游客户端的 IP 地址、信号强度、负载、信道占用率、链路速率和最后发现时间 |
 | 后台应用 | 应用设置时脚本脱离页面在后台执行，并只做非破坏性的网络 / 无线重载，避免请求超时或页面掉线 |
+| 备份管理 | 「备份管理」标签页可创建、恢复、删除或清空整机配置快照；点击「保存并应用」时会先自动备份保存前的配置，归档存放于 `/etc/meshassistant/backup` |
 | Dumb AP 模式 | 把节点切换为接入现有网络的哑 AP（会更换管理地址，操作前有确认对话框） |
 | DHCP 可复用 | 服务器可选择是否提供 DHCP/IPv6 RA；LAN 上已有 DHCP 服务器时可关闭 |
 | 国际化 | 支持英文与简体中文；中文以独立语言包提供 |
@@ -72,7 +73,7 @@ make package/luci-app-meshassistant/compile V=s
 2. 在「基础设置」中选择 Mesh 模式，填写 WiFi 网络 SSID、普通 AP 射频、Mesh 射频、Mesh 网络 SSID 和密码。普通 AP 射频可从 2.4 GHz、5 GHz、6 GHz 中选择最多两个射频，所选射频使用同一个 WiFi 网络 SSID；选择两个射频时可勾选「启用 MLO」，把两个射频合并为一个 Wi-Fi 7 多链路接入点（射频会自动切换为 EHT 模式）；6 GHz 按 WPA3 启动；所有设备的 Mesh 射频、Mesh 网络 SSID 与密码必须一致。
 3. 节点或客户端在「AP 模式」页设置主机名和 IP：LAN 上有 DHCP 服务器时可选 DHCP，没有 DHCP 或需要固定管理地址时选择静态 IP。
 4. 需要有线回程时，在网线两端设备的「有线回程端口」中选择相连的 LAN 网桥端口；纯无线回程保持「无」。
-5. 点击「保存并应用」，再点击「重新应用 MESH助手设置」。建议先配置服务器，再配置节点；执行日志位于 `/tmp/meshassistant.log`。
+5. 点击「保存并应用」，再点击「重新应用 MESH助手设置」。保存时会自动把保存前的配置备份到「备份管理」；建议先配置服务器，再配置节点；执行日志位于 `/tmp/meshassistant.log`。
 6. 刷新页面，在顶部「Mesh 状态」确认邻居节点出现。
 
 详细的字段说明、地址规划、静态 IP 规则和排错方法见 [info/README.md](info/README.md)。
@@ -111,6 +112,21 @@ Mesh 在二层把服务器、节点和客户端连成同一个网段：三者的
 - 网线连接时优先使用有线，网线拔出后自动切换到 Mesh 无线，恢复后自动切回有线。
 - 如果只需要普通有线上行，请保持「有线回程端口」为「无」，按普通 LAN 口使用。
 
+## 备份管理
+
+「备份管理」标签页位于「运行日志」之前，用于保存和恢复整机的网络配置。备份是 `/etc/meshassistant/backup/` 下的 tar 归档，文件名形如 `20261105-143022.tar`，包含 `network`、`wireless`、`dhcp`、`firewall`、`system` 和 `meshassistant` 六份配置，以及记录创建时间、主机名、LAN 地址、角色和服务状态的清单。
+
+- **创建备份**：立即把当前配置打包保存。
+- **手动恢复**：从列表中选择一个备份恢复；存在多个备份时会显示下拉框。执行前会先自动备份当前配置，因此误恢复也可以再恢复回来。
+- **删除备份**：删除选中的一个备份，操作前弹出确认对话框。
+- **清空备份**：删除全部备份，操作前弹出确认对话框。
+
+除了手动创建，点击「保存并应用」时页面会先把**执行保存之前的**当前配置自动备份一份，再写入表单；点击「重新应用 MESH助手设置」时，脚本在启用或关闭 Mesh 之前也会自动备份。因此每次应用都会留下一个快照，备份较多时可在标签页中清理。
+
+恢复会写回六份配置、按备份清单恢复 `firewall`、`dnsmasq`、`odhcpd` 的启用状态和 Mesh 服务的运行状态，然后执行 `reload_config`、重新加载网络并重启无线。**恢复过程中连接可能中断，管理地址也可能改变**，请确保能通过网线或新地址重新访问设备。备份归档包含 WiFi 与 Mesh 密码，请妥善保管；目录权限为 0700，文件权限为 0600。
+
+详细操作与注意事项见 [info/README.md 第 10 节](info/README.md#10-备份管理)。
+
 ## 注意事项
 
 - **服务器**：一个 Mesh 中只应有一台服务器；可用 WAN 口接上游（服务器做 NAT 和 DHCP），也可用 LAN 口接上游（DHCP 复用，由主路由负责 NAT/DHCP，此时关闭「服务器提供 DHCP」）。详见[服务器上行方式](#服务器上行方式)。
@@ -120,7 +136,7 @@ Mesh 在二层把服务器、节点和客户端连成同一个网段：三者的
 
 ## 工作原理与安全
 
-前端读取 UCI 与 `batctl n`，把表单写入 `/etc/config/meshassistant`，并通过 RPC 执行 `/meshassistant/meshassistant.sh`。浏览器不拼接 shell 命令；rpcd ACL 只允许 `/usr/sbin/batctl n`、`/meshassistant/meshassistant.sh --detach` 和 `/meshassistant/meshassistant.sh --detach dumbap` 三种调用。UCI 权限为可读 `meshassistant`、`network`、`wireless`，只可写 `meshassistant`；对 `network`、`firewall`、`dhcp`、`system` 的修改全部在 root 脚本内部完成。
+前端读取 UCI 与 `batctl n`，把表单写入 `/etc/config/meshassistant`，并通过 RPC 执行 `/meshassistant/meshassistant.sh`。浏览器不拼接 shell 命令；rpcd ACL 只允许固定的只读调用（如 `/usr/sbin/batctl n`、`linkinfo`、`backup list`）和固定的写操作（`--detach`、`--detach dumbap`、`--detach backup restore`、`backup create`、`backup delete`、`backup clear`）。恢复时选择的归档名通过固定文件 `/tmp/meshassistant_backup_selection` 传递，不会把用户输入拼进命令行。UCI 权限为可读 `meshassistant`、`network`、`wireless`，只可写 `meshassistant`；对 `network`、`firewall`、`dhcp`、`system` 的修改全部在 root 脚本内部完成。
 
 脚本以 `--detach` 在后台执行，避免 WiFi/网络重启导致 RPC 超时。服务器把 `bat0` 设为 `gw_mode=server` 并加入 LAN 桥；节点/客户端把 `bat0` 设为 `gw_mode=off`，停用 `firewall`、`dnsmasq`、`odhcpd` 并记录以便恢复。关闭 Mesh 时脚本只撤销自己记录过的改动。
 

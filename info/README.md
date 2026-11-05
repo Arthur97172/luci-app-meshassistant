@@ -17,6 +17,7 @@
 - [7. 验证与排错](#7-验证与排错)
 - [8. 组网示例](#8-组网示例)
 - [9. 关闭、回滚与恢复](#9-关闭回滚与恢复)
+- [10. 备份管理](#10-备份管理)
 
 ## 1. 组网前的准备
 
@@ -48,7 +49,7 @@ cp /etc/config/network /etc/config/wireless /etc/config/dhcp \
    /etc/config/firewall /etc/config/system /root/mesh-backup/
 ```
 
-插件自身也会在启用时备份它修改的 LAN、主机名、DHCP 设置，并在关闭 Mesh 时恢复；额外的手工备份用于应对断电、误操作或需要重新刷机的情况。
+插件也提供「备份管理」标签页（见[第 10 节](#10-备份管理)），可随时创建和恢复完整的 tar 配置快照，并在「保存并应用」前自动保存一份。插件在启用 Mesh 时还会记录并恢复它修改的 LAN、主机名、DHCP 设置；上述手工副本主要用于应对断电、误操作或重新刷机。
 
 ### 1.4 管理连接建议
 
@@ -99,8 +100,8 @@ K/V/R、移动域（4 位十六进制）和 RSSI 阈值用于漫游优化。除�
 
 ### 2.4 保存与应用
 
-1. 点击页面底部的「保存并应用」——这一步只写入 `/etc/config/meshassistant`，不改网络。
-2. 点击「重新应用 MESH助手设置」——脚本才真正创建/删除接口、修改 LAN、启动或停止服务。执行输出写入 `/tmp/meshassistant.log`。
+1. 点击页面底部的「保存并应用」——页面会先把**保存之前**的当前配置自动备份到 `/etc/meshassistant/backup`，然后只写入 `/etc/config/meshassistant`，不改网络。
+2. 点击「重新应用 MESH助手设置」——脚本在改动网络前会再自动备份一次，然后才创建/删除接口、修改 LAN、启动或停止服务。执行输出写入 `/tmp/meshassistant.log`。
 3. 建议顺序：**先服务器，后节点**。服务器先形成 Mesh 网关，节点加入后才能正常工作。
 4. 应用过程中网络和无线会重启，页面可能短暂断开；等待重启完成后重新连接并刷新页面。
 
@@ -567,6 +568,7 @@ bash /meshassistant/meshassistant.sh undumb
 
 如果配置错误导致无法通过 LuCI 访问：
 
+- 如果 LuCI 仍可访问，优先在「备份管理」中恢复一个较早的备份；恢复会重启网络，连接可能再次中断；
 - 尝试用网线连接设备的 LAN 口，在服务器 DHCP 租约中查找设备地址；
 - 如果知道静态地址，把电脑设为同网段地址后直接访问；
 - 检查 `/tmp/meshassistant.log` 和 `logread`（需要 SSH 或串口）；
@@ -574,6 +576,62 @@ bash /meshassistant/meshassistant.sh undumb
 - 哑 AP 模式可用 `undumb` 恢复五份配置。
 
 > 任何改动前保留备份，并确保能物理接触到设备，是避免“变砖”的最有效方法。
+
+## 10. 备份管理
+
+「备份管理」标签页位于「运行日志」之前，用于保存和恢复整机的网络配置，日常操作不需要 SSH。
+
+### 10.1 四个操作
+
+| 按钮 | 行为 |
+| --- | --- |
+| 创建备份 | 立即把当前配置打包到 `/etc/meshassistant/backup`。 |
+| 手动恢复 | 从列表中选择一个备份恢复；有多个备份时显示下拉框。执行前会先为当前配置创建一份安全备份，因此误恢复后还能再恢复回来。 |
+| 删除备份 | 删除选中的一个备份；有多个备份时先选择，再确认。 |
+| 清空备份 | 删除全部备份，需要确认。 |
+
+### 10.2 自动备份时机
+
+- 点击「保存并应用」时，页面先备份**执行保存之前**的当前配置，再写入表单。
+- 点击「重新应用 MESH助手设置」时，脚本在启用或关闭 Mesh 之前再备份一次。
+- 因此每次应用都会留下一个快照；备份较多时可在标签页中删除或清空。
+
+### 10.3 备份内容与格式
+
+- 位置：`/etc/meshassistant/backup/`，目录权限 0700。
+- 文件名：`YYYYMMDD-HHMMSS.tar`，同一秒内重复时追加 `-1`、`-2` 等后缀；文件权限 0600。
+- 内容：`etc/config/network`、`wireless`、`dhcp`、`firewall`、`system`、`meshassistant` 六份配置，以及 `manifest` 清单（创建时间、主机名、LAN 地址、角色、Mesh 开关、`firewall`/`dnsmasq`/`odhcpd` 的启用状态）。
+- 归档包含 WiFi 和 Mesh 密码，请妥善保管；不要随意把归档发给他人。
+
+### 10.4 恢复流程
+
+1. 在「备份管理」中点击「手动恢复」，有多个备份时在下拉框中选择目标归档。
+2. 确认后，脚本先为当前配置创建安全备份，再校验归档：只允许预期的文件名，拒绝符号链接，并用 `uci` 检查每份配置的语法。
+3. 校验通过后写回六份配置，按清单恢复 `firewall`、`dnsmasq`、`odhcpd` 的启用状态，并根据备份中的 Mesh 开关启动或停止 Mesh 服务。
+4. 最后执行 `reload_config`、`/etc/init.d/network reload` 和 `wifi reload`。
+
+恢复在后台执行，输出写入 `/tmp/meshassistant.log`。**恢复期间网络和无线会重启，当前连接可能中断，管理地址也可能改变**：请尽量用网线连接，或确认自己知道备份中的 LAN 地址；如果恢复后的地址与当前访问地址不同，需要改用新地址重新登录。
+
+### 10.5 命令行查看与应急恢复
+
+需要 SSH 时，可以只读地查看备份：
+
+```sh
+bash /meshassistant/meshassistant.sh backup list
+ls -l /etc/meshassistant/backup
+tar -tf /etc/meshassistant/backup/20261105-143022.tar
+```
+
+如果 LuCI 无法访问，也可以手工解压归档并复制配置：
+
+```sh
+mkdir -p /tmp/restore
+tar -xf /etc/meshassistant/backup/<文件名>.tar -C /tmp/restore
+cp /tmp/restore/etc/config/network /etc/config/network
+# 按需同样复制 wireless、dhcp、firewall、system、meshassistant
+```
+
+手工恢复只写配置文件，不会按清单恢复服务开关，也不会自动重载网络；复制完成后请执行 `reload_config`、`/etc/init.d/network reload` 和 `wifi reload`，或直接重启设备。
 
 ---
 
