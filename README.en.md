@@ -178,7 +178,8 @@ restores the whole network configuration. A backup is a tar archive under
 `/etc/meshassistant/backup/` named like `20261105-143022.tar`, containing the
 `network`, `wireless`, `dhcp`, `firewall`, `system` and `meshassistant`
 configurations plus a manifest with the creation time, hostname, LAN address,
-role and service states.
+role and service states. Creating, restoring, deleting and clearing backups
+are recorded in `/tmp/meshassistant.log`, visible on the **Run Log** tab.
 
 - **Create Backup** archives the current configuration immediately.
 - **Restore Backup** restores one of the listed archives; when several exist a

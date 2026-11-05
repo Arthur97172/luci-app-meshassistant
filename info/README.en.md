@@ -379,12 +379,14 @@ logread | tail -50
 
 ### 7.4 Reading the log
 
-`/tmp/meshassistant.log` records:
+`/tmp/meshassistant.log` is appended to across runs (the oldest part is
+dropped once it passes 256 KiB). It records:
 
 - wireless interfaces created or removed;
 - LAN address and hostname changes;
 - wired backhaul ports removed and restored;
-- port validation failures and fallback to wireless backhaul.
+- port validation failures and fallback to wireless backhaul;
+- backups created, restored, deleted or cleared from the **Backup Management** tab.
 
 Start troubleshooting there, then combine it with `batctl n` and `logread`.
 
@@ -595,6 +597,9 @@ restores the whole network configuration. Day-to-day use needs no SSH.
 | Restore Backup | Restores one of the listed archives; when several exist, a drop-down lets you choose. The current configuration is archived first, so an unwanted restore can itself be undone. |
 | Delete Backup | Deletes one selected archive; choose first when several exist, then confirm. |
 | Clear Backups | Deletes every archive; asks for confirmation. |
+
+Creating, restoring, deleting and clearing leave a timestamped record in
+`/tmp/meshassistant.log`, visible on the **Run Log** tab.
 
 ### 10.2 When backups happen automatically
 

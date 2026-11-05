@@ -10,12 +10,18 @@ MESHASSISTANT_PEERS=/tmp/meshassistant_peers
 MESHASSISTANT_PEER_MAX_AGE=120
 MESHASSISTANT_ANNOUNCE_INTERVAL=10
 MESHASSISTANT_LOG=/tmp/meshassistant.log
+# Keep the run log bounded: /tmp is RAM-backed and the file is appended to by
+# every detached run and by the backup actions, so trim the oldest part once
+# it grows past this many bytes.
+MESHASSISTANT_LOG_MAX=${MESHASSISTANT_LOG_MAX:-262144}
 
 # Return immediately from LuCI RPC calls: wifi/network restarts may take
 # longer than the RPC timeout and can drop the current browser connection.
+# The output is appended, so the Run Log tab keeps the record of earlier runs
+# and of the backup actions instead of showing only the last detached run.
 if [ "$1" = "--detach" ]; then
     shift
-    /meshassistant/meshassistant.sh "$@" >"$MESHASSISTANT_LOG" 2>&1 &
+    /meshassistant/meshassistant.sh "$@" >>"$MESHASSISTANT_LOG" 2>&1 &
     exit 0
 fi
 
@@ -26,14 +32,34 @@ MESHASSISTANT_ARGS="$*"
 # ---------------------------------------------------------------------------
 # Run log helpers
 #
-# The detached run redirects stdout/stderr to $MESHASSISTANT_LOG, which the
+# The detached run appends its stdout/stderr to $MESHASSISTANT_LOG, which the
 # LuCI "Run Log" tab displays.  These helpers add a timestamped run header and
 # record the UCI options that each commit writes, so the log shows both the
 # script being run and the configuration it actually changed.
 # ---------------------------------------------------------------------------
 
+log_trim() {
+    [ -f "$MESHASSISTANT_LOG" ] || return 0
+    [ "$(wc -c <"$MESHASSISTANT_LOG")" -gt "$MESHASSISTANT_LOG_MAX" ] || return 0
+    # Rewrite the file in place instead of replacing it: a detached run has
+    # its stdout open on this file, and a rename would leave that output
+    # writing to an unlinked inode.
+    tail -c "$MESHASSISTANT_LOG_MAX" "$MESHASSISTANT_LOG" >"$MESHASSISTANT_LOG.tmp" &&
+        cat "$MESHASSISTANT_LOG.tmp" >"$MESHASSISTANT_LOG"
+    rm -f "$MESHASSISTANT_LOG.tmp"
+}
+
 log_note() {
     printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"
+}
+
+# Record one event in the run log file itself.  A detached run writes its
+# whole output there, but the backup actions return without --detach so that
+# LuCI receives their result; append their audit line here, otherwise the Run
+# Log tab would not show that a backup was created, deleted or cleared.
+log_append() {
+    log_trim
+    printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >>"$MESHASSISTANT_LOG"
 }
 
 # Write the pending UCI changes for one config (secrets masked) and commit
@@ -59,6 +85,8 @@ uci_commit() {
 # Heading for a run: command line, host, and the settings that drive it.
 log_run_header() {
     local action="$1" hostname ip key_state role server_dhcp ssid_mode wired_backhaul
+
+    log_trim
 
     hostname=$(uci -q get system.@system[0].hostname)
     [ -n "$hostname" ] || hostname=$(cat /proc/sys/kernel/hostname 2>/dev/null)
@@ -1832,6 +1860,10 @@ backup_create() {
 
     chmod 600 "$file"
     rm -rf "$tmp"
+    # Read by the backup subcommand dispatcher to record the action in the
+    # run log; the function itself is also called without logging by a mesh
+    # apply, whose own log already says that it is creating a backup.
+    BACKUP_LAST_CREATED="$file"
     echo "Created backup: $file"
 }
 
@@ -1903,7 +1935,9 @@ backup_restore() {
         return 1
     fi
 
-    echo "Restoring backup: $file"
+    # The restore runs detached from LuCI, so this output is appended to the
+    # run log; use the timestamped helper to mark where the restore began.
+    log_note "Restoring backup: $file"
 
     # Keep a snapshot of the current configuration as well, so a restore can
     # itself be undone.  A failure here must not prevent the restore.
@@ -1979,7 +2013,7 @@ backup_restore() {
     /etc/init.d/network reload
     wifi reload
 
-    echo "Restore complete. The management address may have changed."
+    log_note "Restore complete. The management address may have changed."
 }
 
 backup_delete() {
@@ -1998,6 +2032,7 @@ backup_delete() {
         return 1
     }
 
+    BACKUP_LAST_DELETED="$name"
     echo "Deleted backup: $name"
 }
 
@@ -2010,6 +2045,7 @@ backup_clear() {
     done
 
     rm -f "$MESHASSISTANT_BACKUP_SELECTION"
+    BACKUP_LAST_COUNT="$count"
     echo "Deleted $count backup(s)."
 }
 
@@ -2034,12 +2070,42 @@ if [ "$1" = "clearlog" ]; then
 fi
 
 if [ "$1" = "backup" ]; then
+    # The backup buttons call these subcommands without --detach, so their
+    # output goes back to LuCI instead of the log; record the action in the
+    # run log here.  "list" is a read on every page load and is not logged.
     case "$2" in
-        create) backup_create ;;
+        create)
+            backup_create
+            rc=$?
+            if [ "$rc" -eq 0 ]; then
+                log_append "Created backup: $BACKUP_LAST_CREATED"
+            else
+                log_append "Backup creation failed."
+            fi
+            exit "$rc"
+            ;;
         list) backup_list ;;
         restore) backup_restore ;;
-        delete) backup_delete ;;
-        clear) backup_clear ;;
+        delete)
+            backup_delete
+            rc=$?
+            if [ "$rc" -eq 0 ]; then
+                log_append "Deleted backup: $BACKUP_LAST_DELETED"
+            else
+                log_append "Backup deletion failed."
+            fi
+            exit "$rc"
+            ;;
+        clear)
+            backup_clear
+            rc=$?
+            if [ "$rc" -eq 0 ]; then
+                log_append "Deleted $BACKUP_LAST_COUNT backup(s)."
+            else
+                log_append "Clearing the backups failed."
+            fi
+            exit "$rc"
+            ;;
         *)
             echo "Usage: $0 backup {create|list|restore|delete|clear}" >&2
             exit 1
