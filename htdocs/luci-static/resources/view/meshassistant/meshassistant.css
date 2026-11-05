@@ -10,7 +10,8 @@
 }
 
 .meshassistant-spectrum-radio {
-	margin: 0.75rem 0 0.25rem;
+	margin: 0.25rem 0 0.25rem;
+	padding-top: 0;
 	font-size: 0.95rem;
 	font-weight: 600;
 }
@@ -95,6 +96,18 @@ html.dark .meshassistant-note {
 
 .meshassistant-spectrum-tabmenu > li.meshassistant-spectrum-tab-active > a {
 	color: var(--text-strong, inherit);
+}
+
+/*
+ * The theme puts one field gap between the children of a tabbed pane.  Here
+ * the children are the sub-tab menu and the pages, and that gap plus the
+ * margins of the radio heading left too much empty space between the tabs
+ * and the first heading.  The page wrapper's own margin is enough; the rule
+ * only applies once the custom menu exists, so a single-radio device keeps
+ * the theme's row spacing.
+ */
+.cbi-section-node-tabbed > .meshassistant-tab-pane[data-tab="spectrum"]:has(> .meshassistant-spectrum-tabmenu) {
+	gap: 0;
 }
 
 /*
