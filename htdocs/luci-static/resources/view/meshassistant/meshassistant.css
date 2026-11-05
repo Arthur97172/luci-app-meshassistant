@@ -36,6 +36,16 @@
 	font-size: 12px;
 }
 
+/*
+ * The basic setup warning is the description of the reapply button.  A row
+ * description fills the whole field column, which would stretch the amber
+ * box far past its text; let the box end right after the text instead.
+ */
+.cbi-value-description.meshassistant-note {
+	width: fit-content;
+	max-width: 100%;
+}
+
 @media (prefers-color-scheme: dark) {
 	:root:not([data-argon-mode="light"]):not([data-darkmode="false"]) .meshassistant-note {
 		--note-fg: #fcd34d;
