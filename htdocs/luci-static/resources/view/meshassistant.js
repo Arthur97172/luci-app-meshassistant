@@ -138,7 +138,12 @@ function radioOptions(devices) {
  * page per band and a regular tab menu is created for them.
  */
 function renderSpectrumTabs(mapEl, groups) {
-	const container = mapEl.querySelector('[data-tab="spectrum"]');
+	/*
+	 * The tab menu items also carry a data-tab attribute, so a plain
+	 * [data-tab="spectrum"] lookup finds the menu entry instead of the page.
+	 * Only the page itself also carries data-tab-title.
+	 */
+	const container = mapEl.querySelector('[data-tab-title][data-tab="spectrum"]');
 
 	if (!container)
 		return;
@@ -945,6 +950,18 @@ return view.extend({
 		return m.render().then((mapEl) => {
 			if (spectrumGroups.length > 1)
 				renderSpectrumTabs(mapEl, spectrumGroups);
+
+			/*
+			 * The four form tabs have very different content lengths.  Mark
+			 * them so the stylesheet can give the active pane one height and
+			 * remove the extra top padding Argon adds to every tab pane.
+			 */
+			for (const tab of [ 'setup', 'spectrum', 'apmode', 'advanced' ]) {
+				const pane = mapEl.querySelector('[data-tab-title][data-tab="' + tab + '"]');
+
+				if (pane)
+					pane.classList.add('meshassistant-tab-pane');
+			}
 
 			const settingsEl = E('div', {
 				'data-tab': 'settings',

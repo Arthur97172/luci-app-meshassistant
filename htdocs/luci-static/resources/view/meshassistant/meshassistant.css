@@ -50,3 +50,26 @@ html.dark .meshassistant-note {
 	--note-bg: rgba(180, 83, 9, .18);
 	--note-border: rgba(253, 230, 138, .35);
 }
+
+/*
+ * The four form tabs have very different content lengths.  On wide screens
+ * give the active pane one height and scroll its content inside the pane, so
+ * switching tabs does not move the card edge or the Save & Apply row.  Small
+ * screens keep the natural height and use the page scroll.
+ */
+@media (min-width: 768px) {
+	.cbi-section-node-tabbed > .meshassistant-tab-pane[data-tab-active="true"] {
+		height: clamp(28rem, 62vh, 42rem);
+		overflow-y: auto;
+		overscroll-behavior: contain;
+	}
+}
+
+/*
+ * Argon pads every tab pane by 1rem on both sides, which reads as an empty
+ * line between the tab menu and the first field.  Drop the top padding for
+ * these four panes; the bottom padding stays.
+ */
+.cbi-section-node-tabbed > .meshassistant-tab-pane[data-tab-active="true"] {
+	padding-block-start: 0;
+}
