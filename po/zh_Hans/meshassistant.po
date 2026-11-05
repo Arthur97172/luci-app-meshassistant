@@ -16,6 +16,9 @@ msgstr "AP 模式"
 msgid "Auto"
 msgstr "自动"
 
+msgid "Backhaul"
+msgstr "回程类型"
+
 msgid "Bad RSSI Threshold"
 msgstr "较差 RSSI 阈值"
 
@@ -304,5 +307,11 @@ msgstr "警告：这将更改此节点的 IP 地址，你将无法再访问此�
 msgid "WiFi Network SSID"
 msgstr "WiFi 网络 SSID"
 
+msgid "Wired"
+msgstr "有线"
+
 msgid "Wired Backhaul Port"
 msgstr "有线回程端口"
+
+msgid "Wireless"
+msgstr "无线"

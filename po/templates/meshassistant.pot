@@ -14,6 +14,9 @@ msgstr ""
 msgid "Auto"
 msgstr ""
 
+msgid "Backhaul"
+msgstr ""
+
 msgid "Bad RSSI Threshold"
 msgstr ""
 
@@ -302,5 +305,11 @@ msgstr ""
 msgid "WiFi Network SSID"
 msgstr ""
 
+msgid "Wired"
+msgstr ""
+
 msgid "Wired Backhaul Port"
+msgstr ""
+
+msgid "Wireless"
 msgstr ""

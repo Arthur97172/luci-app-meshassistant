@@ -1523,11 +1523,18 @@ daemon_meshassistant() {
     done
 }
 
+# A mac80211 netdev exposes a "phy80211" link in sysfs; an Ethernet port used
+# for wired backhaul does not.
+hardif_is_wireless() {
+    [ -e "/sys/class/net/$1/phy80211" ]
+}
+
 # Frequency, channel utilization and signal of the active mesh links.  "batctl
 # n" only reports the MAC of the hardif that carries each link; the radio driver
 # knows the channel, its busy time and the signal of each station.  Print one
 # value per line so the LuCI view can merge it with the neighbor rows without
 # parsing iw's multi-line output:
+#   kind <hardif> wlan|wired
 #   iface <hardif> <MHz> <channel> <width MHz>
 #   busy <hardif> <percent>
 #   peer <hardif> <MAC> <dBm>
@@ -1535,16 +1542,26 @@ daemon_meshassistant() {
 # It also prints the identity of this device for the "Local Host" row:
 #   local <hostname> <IPv4|-> <load|->
 link_info() {
-    local ip
+    local ip have_iw
     ip=$(lan_ipv4)
     printf 'local %s %s %s\n' "$(local_hostname)" "${ip:--}" "$(local_load)"
 
-    command -v iw >/dev/null 2>&1 || return 0
+    command -v iw >/dev/null 2>&1 && have_iw=1 || have_iw=0
 
     batctl meshif bat0 interface 2>/dev/null \
         | sed -n 's/^\([^:]*\):.*/\1/p' \
         | while read -r iface; do
             [ -n "$iface" ] || continue
+
+            # A wired backhaul has no radio settings, but its kind still lets
+            # the status table explain why those cells are empty.
+            if hardif_is_wireless "$iface"; then
+                printf 'kind %s wlan\n' "$iface"
+            else
+                printf 'kind %s wired\n' "$iface"
+            fi
+
+            [ "$have_iw" = 1 ] || continue
             # iw prints "channel 37 (6135 MHz), width: 320 MHz".
             info=$(iw dev "$iface" info 2>/dev/null)
             link=$(printf '%s\n' "$info" \

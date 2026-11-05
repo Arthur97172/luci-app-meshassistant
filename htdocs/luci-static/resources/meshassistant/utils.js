@@ -369,6 +369,7 @@ return baseclass.extend({
 	// and MAC.  Missing values are simply absent, which is normal for a wired
 	// backhaul.  The channel and width follow the frequency and may be
 	// missing when the driver does not expose them:
+	//   kind <hardif> wlan|wired
 	//   iface <hardif> <MHz> [<channel> <width MHz>]
 	parseLinkInfo(reply) {
 		const links = {};
@@ -421,6 +422,17 @@ return baseclass.extend({
 					links[iface].signals = {};
 				links[iface].signals[mac] = signal;
 			}
+			else if (parts[0] === 'kind' && parts.length >= 3) {
+				const iface = clean(parts[1]);
+				const kind = clean(parts[2]);
+
+				if (!iface || (kind !== 'wired' && kind !== 'wlan'))
+					continue;
+
+				if (!links[iface])
+					links[iface] = {};
+				links[iface].kind = kind;
+			}
 		}
 
 		return links;
@@ -471,10 +483,11 @@ return baseclass.extend({
 		return { iface: iface, neighbor: mac };
 	},
 
-	// Attach the radio frequency, channel, width, channel utilization and the
-	// peer signal to every neighbor row.  They all depend on the hardif named
-	// by "batctl n": a wired backhaul has no radio settings and no station
-	// signal, so those cells stay empty.
+	// Attach the backhaul medium and the radio frequency, channel, width,
+	// channel utilization and the peer signal to every neighbor row.  The
+	// radio values all depend on the hardif named by "batctl n": a wired
+	// backhaul has no radio settings and no station signal, so those cells
+	// stay empty.
 	annotateLinks(rows, links) {
 		links = links || {};
 
@@ -484,6 +497,7 @@ return baseclass.extend({
 			const mac = this.macKey(row.neighbor);
 			const signal = mac && link.signals ? link.signals[mac] : null;
 
+			row.backhaul = link.kind === 'wired' || link.kind === 'wlan' ? link.kind : '';
 			row.frequency = link.frequency ? link.frequency + ' MHz' : '';
 			row.channel = link.channel ? String(link.channel) : '';
 			row.width = link.width ? link.width + ' MHz' : '';
@@ -554,9 +568,10 @@ return baseclass.extend({
 	},
 
 	// Build the "Local Host" row: the identity of this device.  The hostname,
-	// LAN address and load come from the "linkinfo" helper; the hardif and its
-	// MAC from the "batctl n" header.  Signal and link rate are not measured
-	// for the device itself, so they mirror its best neighbor link.
+	// LAN address and load come from the "linkinfo" helper; the hardif, its
+	// MAC and its medium from the "batctl n" header and "linkinfo".  Signal
+	// and link rate are not measured for the device itself, so they mirror
+	// its best neighbor link.
 	parseLocalRow(statusStdout, linkReply, rows) {
 		const info = this.parseLocalInfo(linkReply);
 
@@ -573,6 +588,7 @@ return baseclass.extend({
 			neighbor: identity.neighbor || '',
 			ips: info.ip ? [ info.ip ] : [],
 			iface: identity.iface || '',
+			backhaul: link.kind || '',
 			frequency: link.frequency ? link.frequency + ' MHz' : '',
 			channel: link.channel ? String(link.channel) : '',
 			width: link.width ? link.width + ' MHz' : '',

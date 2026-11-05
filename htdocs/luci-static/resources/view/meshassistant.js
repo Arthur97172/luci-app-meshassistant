@@ -322,6 +322,7 @@ function statusTable(rows) {
 		_('Node MAC'),
 		_('IP Address'),
 		_('Interface'),
+		_('Backhaul'),
 		_('Frequency'),
 		_('Channel'),
 		_('Channel Width'),
@@ -346,6 +347,10 @@ function statusTable(rows) {
 				row.ips && row.ips.length ? row.ips.join(', ') : '-'
 			]),
 			E('div', { 'class': 'td' }, [ row.iface || '-' ]),
+			E('div', { 'class': 'td' }, [
+				row.backhaul === 'wired' ? _('Wired') :
+				row.backhaul === 'wlan' ? _('Wireless') : '-'
+			]),
 			E('div', { 'class': 'td' }, [ row.frequency || '-' ]),
 			E('div', { 'class': 'td' }, [ row.channel || '-' ]),
 			E('div', { 'class': 'td' }, [ row.width || '-' ]),
