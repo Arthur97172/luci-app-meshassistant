@@ -132,6 +132,102 @@ function radioOptions(devices) {
 }
 
 /*
+ * The spectrum settings of more than one band are shown as sub-tabs inside
+ * the Spectrum Settings tab.  LuCI groups tab pages by their data-tab /
+ * data-tab-title attributes, so the already rendered rows are moved into one
+ * page per band and a regular tab menu is created for them.
+ */
+function renderSpectrumTabs(mapEl, groups) {
+	const container = mapEl.querySelector('[data-tab="spectrum"]');
+
+	if (!container)
+		return;
+
+	const nameBand = {};
+	const panes = {};
+
+	for (const group of groups) {
+		for (const radio of group.radios) {
+			const names = [ '_spectrum_radio_' + radio ];
+
+			for (const field of [ 'band', 'mode', 'width', 'channel', 'txpower', 'country' ])
+				names.push('spectrum_' + radio + '_' + field);
+
+			for (const name of names)
+				nameBand[name] = group.band;
+		}
+
+		panes[group.band] = E('div', {
+			'data-tab': 'spectrum-' + group.band,
+			'data-tab-title': group.label
+		});
+	}
+
+	for (const row of Array.from(container.querySelectorAll('[data-name]'))) {
+		const band = nameBand[row.getAttribute('data-name')];
+
+		if (band)
+			panes[band].appendChild(row);
+	}
+
+	/* Argon zeroes the top margin of the element after a tab menu. */
+	const wrapper = E('div', { 'style': 'margin-block-start: 0.5rem' },
+		groups.map(function(group) {
+			return panes[group.band];
+		}));
+
+	container.appendChild(wrapper);
+	ui.tabs.initTabGroup(wrapper.childNodes);
+
+	/*
+	 * CBI hides a band page once all of its radios are deselected.  If that
+	 * page was the active one the area would stay visible but empty, so
+	 * switch to a band that still has fields (checked after CBI updated the
+	 * dependency states, which happens earlier in the same event).
+	 */
+	mapEl.addEventListener('widget-change', function() {
+		keepBandTabActive(wrapper);
+	});
+}
+
+function keepBandTabActive(wrapper) {
+	const menu = wrapper.previousElementSibling;
+
+	if (!menu || typeof ui.tabs.isEmptyPane !== 'function')
+		return;
+
+	const panes = wrapper.children;
+	let active = null;
+
+	for (let i = 0; i < panes.length; i++) {
+		if (panes[i].getAttribute('data-tab-active') === 'true')
+			active = panes[i];
+	}
+
+	if (active && !ui.tabs.isEmptyPane(active))
+		return;
+
+	for (let i = 0; i < panes.length; i++) {
+		if (ui.tabs.isEmptyPane(panes[i]))
+			continue;
+
+		const name = panes[i].getAttribute('data-tab');
+
+		for (let j = 0; j < menu.children.length; j++) {
+			if (menu.children[j].getAttribute('data-tab') !== name)
+				continue;
+
+			const link = menu.children[j].firstElementChild;
+
+			if (link && typeof link.click === 'function')
+				link.click();
+
+			return;
+		}
+	}
+}
+
+/*
  * Normalize a UCI option that may be a list or a legacy single string.
  * LuCI returns an array for UCI lists and a string for plain options.
  */
@@ -577,22 +673,40 @@ return view.extend({
 			option.depends({ apRadio: radio });
 		}
 
+		/*
+		 * Only bands that an actual radio of this device uses are collected,
+		 * so a router without a 6 GHz radio never gets a 6 GHz group.  With
+		 * more than one band the groups become sub-tabs of the spectrum tab
+		 * (see renderSpectrumTabs); a single-band device keeps a heading.
+		 */
+		const spectrumGroups = [];
+
 		for (const band of [ '2g', '5g', '6g' ]) {
-			const radios = spectrumBands[band];
+			if (spectrumBands[band]) {
+				spectrumGroups.push({
+					band: band,
+					label: BAND_NAMES[band],
+					radios: spectrumBands[band]
+				});
+			}
+		}
 
-			if (!radios)
-				continue;
+		for (const group of spectrumGroups) {
+			const band = group.band;
+			const radios = group.radios;
+			const bandLabel = group.label;
 
-			const bandLabel = BAND_NAMES[band];
-			const bandHeader = s.taboption('spectrum', form.DummyValue,
-				'_spectrum_band_' + band, '', '');
+			if (spectrumGroups.length === 1) {
+				const bandHeader = s.taboption('spectrum', form.DummyValue,
+					'_spectrum_band_' + band, '', '');
 
-			bandHeader.default = '<h3 class="meshassistant-spectrum-band">%s</h3>'
-				.format(bandLabel);
-			bandHeader.rawhtml = true;
+				bandHeader.default = '<h3 class="meshassistant-spectrum-band">%s</h3>'
+					.format(bandLabel);
+				bandHeader.rawhtml = true;
 
-			for (const radio of radios)
-				addRadioDeps(bandHeader, radio);
+				for (const radio of radios)
+					addRadioDeps(bandHeader, radio);
+			}
 
 			for (const radio of radios) {
 				const current = parseHtmode(uci.get('wireless', radio, 'htmode'));
@@ -805,6 +919,9 @@ return view.extend({
 		o.depends('role', /^(off|client)$/);
 
 		return m.render().then((mapEl) => {
+			if (spectrumGroups.length > 1)
+				renderSpectrumTabs(mapEl, spectrumGroups);
+
 			const settingsEl = E('div', {
 				'data-tab': 'settings',
 				'data-tab-title': _('Mesh Settings'),
