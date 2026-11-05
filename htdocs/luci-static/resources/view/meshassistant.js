@@ -108,6 +108,31 @@ function bandFrequencies(frequencies, band) {
 	return out;
 }
 
+/*
+ * rpc.declare() with an `expect` of { results: [] } resolves to the value of
+ * that key, so the frequency and country calls return the array itself.
+ * Older LuCI replies may still wrap it, so accept both shapes.
+ */
+function rpcResults(value) {
+	if (Array.isArray(value))
+		return value;
+
+	return (value && Array.isArray(value.results)) ? value.results : [];
+}
+
+/*
+ * Every radio page ends with the same reminder: the spectrum settings only
+ * match up when the server and the node/client are configured alike.
+ */
+function addSpectrumHint(s, radio) {
+	const hint = s.taboption('spectrum', form.DummyValue,
+		'spectrum_' + radio + '_hint', '', '');
+
+	hint.default = '<p class="meshassistant-note meshassistant-spectrum-hint">%s</p>'
+		.format(_('Make sure the “Server” and the “Node” or “Client” use the same settings.'));
+	hint.rawhtml = true;
+}
+
 function validSpectrumPair(band, mode, width) {
 	switch (mode) {
 	case 'HT':
@@ -349,10 +374,10 @@ function statusSubtitle(title) {
 function statusTable(rows) {
 	const titles = [
 		_('Node Hostname'),
+		_('Backhaul'),
 		_('Node MAC'),
 		_('IP Address'),
 		_('Interface'),
-		_('Backhaul'),
 		_('Frequency'),
 		_('Channel'),
 		_('Channel Width'),
@@ -372,15 +397,15 @@ function statusTable(rows) {
 	for (const row of rows) {
 		table.appendChild(E('div', { 'class': 'tr' }, [
 			E('div', { 'class': 'td' }, [ row.hostname || '-' ]),
+			E('div', { 'class': 'td' }, [
+				row.backhaul === 'wired' ? _('Wired') :
+				row.backhaul === 'wlan' ? _('Wireless') : '-'
+			]),
 			E('div', { 'class': 'td' }, [ row.neighbor || '-' ]),
 			E('div', { 'class': 'td' }, [
 				row.ips && row.ips.length ? row.ips.join(', ') : '-'
 			]),
 			E('div', { 'class': 'td' }, [ row.iface || '-' ]),
-			E('div', { 'class': 'td' }, [
-				row.backhaul === 'wired' ? _('Wired') :
-				row.backhaul === 'wlan' ? _('Wireless') : '-'
-			]),
 			E('div', { 'class': 'td' }, [ row.frequency || '-' ]),
 			E('div', { 'class': 'td' }, [ row.channel || '-' ]),
 			E('div', { 'class': 'td' }, [ row.width || '-' ]),
@@ -617,24 +642,24 @@ return view.extend({
 			return Promise.all([
 				Promise.all(banded.map(function(radio) {
 					return callFreqList(radio).catch(function() {
-						return { results: [] };
+						return [];
 					});
 				})),
 				callCountryList(banded[0]).catch(function() {
-					return { results: [] };
+					return [];
 				})
 			]).then(([ lists, countries ]) => {
 				const seen = {};
 
 				for (const list of lists) {
-					for (const freq of (list && list.results) || [])
+					for (const freq of rpcResults(list))
 						seen[freq.band + ':' + freq.channel] = freq;
 				}
 
 				this.freqList = Object.keys(seen).map(function(key) {
 					return seen[key];
 				});
-				this.countryList = (countries && countries.results) || [];
+				this.countryList = rpcResults(countries);
 			});
 		});
 	},
@@ -865,6 +890,7 @@ return view.extend({
 				note.default = '<p class="meshassistant-note">%s</p>'
 					.format(_('This radio interface reports no frequency band, so no spectrum settings are available.'));
 				note.rawhtml = true;
+				addSpectrumHint(s, radio);
 				continue;
 			}
 
@@ -986,6 +1012,8 @@ return view.extend({
 			}
 
 			countryOpt.default = '';
+
+			addSpectrumHint(s, radio);
 		}
 
 		o = s.taboption('advanced', form.Flag, 'kvr', _('K/V/R'), _('Leave these settings as default unless you know what you are doing.'));

@@ -145,6 +145,9 @@ msgstr "本机"
 msgid "MLO requires exactly two radios."
 msgstr "启用 MLO 需要恰好选择两个射频。"
 
+msgid "Make sure the “Server” and the “Node” or “Client” use the same settings."
+msgstr "请确保“服务器”与“节点”或“客户端”之间使用相同的配置。"
+
 msgid "Maximum Transmit Power"
 msgstr "最大传输功率"
 

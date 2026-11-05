@@ -53,6 +53,26 @@ html.dark .meshassistant-note {
 }
 
 /*
+ * The shared-settings hint at the bottom of every radio page.  The theme
+ * pads every paragraph of a section and indents it from the row edge, which
+ * makes the amber box wider than the warning of the basic setup.  Put the
+ * box where the field column of the rows above starts and keep the tight
+ * padding of the basic setup warning.
+ */
+.meshassistant-spectrum-pane .meshassistant-spectrum-hint {
+	margin: 8px 0 16px var(--form-label-width, 0px);
+	padding: 8px 10px;
+	width: fit-content;
+	max-width: 100%;
+	/*
+	 * Rows of the form carry a 2.4rem line height; inherited here it would
+	 * leave a large empty band above and below the 12px text.  The basic
+	 * setup warning renders at 18px, so use the same line box here.
+	 */
+	line-height: 1.5;
+}
+
+/*
  * The sub-tab menu of the Spectrum Settings page, one tab per radio
  * interface.  It is styled here instead of with the theme's cbi-tabmenu
  * classes so the tabs keep their names and their size in every theme and in

@@ -143,6 +143,9 @@ msgstr ""
 msgid "MLO requires exactly two radios."
 msgstr ""
 
+msgid "Make sure the “Server” and the “Node” or “Client” use the same settings."
+msgstr ""
+
 msgid "Maximum Transmit Power"
 msgstr ""
 
