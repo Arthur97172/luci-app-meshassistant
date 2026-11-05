@@ -313,3 +313,84 @@ msgstr ""
 
 msgid "Wireless"
 msgstr ""
+
+msgid "A backup of the current configuration is created before restoring."
+msgstr ""
+
+msgid "All backups will be deleted. This cannot be undone."
+msgstr ""
+
+msgid "Backup Management"
+msgstr ""
+
+msgid "Backups are stored in %s."
+msgstr ""
+
+msgid "Clear All"
+msgstr ""
+
+msgid "Clear Backups"
+msgstr ""
+
+msgid "Create Backup"
+msgstr ""
+
+msgid "Delete"
+msgstr ""
+
+msgid "Delete Backup"
+msgstr ""
+
+msgid "Deleting a backup cannot be undone."
+msgstr ""
+
+msgid "Failed to clear the backups: %s"
+msgstr ""
+
+msgid "Failed to create the automatic backup: %s"
+msgstr ""
+
+msgid "Failed to create the backup: %s"
+msgstr ""
+
+msgid "Failed to delete the backup: %s"
+msgstr ""
+
+msgid "Failed to read the backups: %s"
+msgstr ""
+
+msgid "Failed to restore the backup: %s"
+msgstr ""
+
+msgid "Loading backups..."
+msgstr ""
+
+msgid "No backups found."
+msgstr ""
+
+msgid "Restore"
+msgstr ""
+
+msgid "Restore Backup"
+msgstr ""
+
+msgid "Restoring a backup overwrites the current network, wireless, DHCP, firewall, system and Mesh Assistant configuration. The connection may drop and the management address may change."
+msgstr ""
+
+msgid "The backup command failed."
+msgstr ""
+
+msgid "The backup is being restored in the background. The connection may drop."
+msgstr ""
+
+msgid "The backup list could not be read."
+msgstr ""
+
+msgid "The clear command failed."
+msgstr ""
+
+msgid "The delete command failed."
+msgstr ""
+
+msgid "The restore command failed."
+msgstr ""

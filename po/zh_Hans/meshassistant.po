@@ -315,3 +315,84 @@ msgstr "有线回程端口"
 
 msgid "Wireless"
 msgstr "无线"
+
+msgid "A backup of the current configuration is created before restoring."
+msgstr "恢复前会先备份当前配置。"
+
+msgid "All backups will be deleted. This cannot be undone."
+msgstr "将删除所有备份，此操作无法撤销。"
+
+msgid "Backup Management"
+msgstr "备份管理"
+
+msgid "Backups are stored in %s."
+msgstr "备份文件保存在 %s。"
+
+msgid "Clear All"
+msgstr "清空全部"
+
+msgid "Clear Backups"
+msgstr "清空备份"
+
+msgid "Create Backup"
+msgstr "创建备份"
+
+msgid "Delete"
+msgstr "删除"
+
+msgid "Delete Backup"
+msgstr "删除备份"
+
+msgid "Deleting a backup cannot be undone."
+msgstr "删除备份后无法恢复。"
+
+msgid "Failed to clear the backups: %s"
+msgstr "清空备份失败：%s"
+
+msgid "Failed to create the automatic backup: %s"
+msgstr "创建自动备份失败：%s"
+
+msgid "Failed to create the backup: %s"
+msgstr "创建备份失败：%s"
+
+msgid "Failed to delete the backup: %s"
+msgstr "删除备份失败：%s"
+
+msgid "Failed to read the backups: %s"
+msgstr "读取备份列表失败：%s"
+
+msgid "Failed to restore the backup: %s"
+msgstr "恢复备份失败：%s"
+
+msgid "Loading backups..."
+msgstr "正在加载备份..."
+
+msgid "No backups found."
+msgstr "未找到备份。"
+
+msgid "Restore"
+msgstr "恢复"
+
+msgid "Restore Backup"
+msgstr "手动恢复"
+
+msgid "Restoring a backup overwrites the current network, wireless, DHCP, firewall, system and Mesh Assistant configuration. The connection may drop and the management address may change."
+msgstr "恢复备份会覆盖当前的网络、无线、DHCP、防火墙、系统和 MESH助手配置。连接可能中断，管理地址也可能改变。"
+
+msgid "The backup command failed."
+msgstr "备份命令执行失败。"
+
+msgid "The backup is being restored in the background. The connection may drop."
+msgstr "正在后台恢复备份，连接可能中断。"
+
+msgid "The backup list could not be read."
+msgstr "无法读取备份列表。"
+
+msgid "The clear command failed."
+msgstr "清空命令执行失败。"
+
+msgid "The delete command failed."
+msgstr "删除命令执行失败。"
+
+msgid "The restore command failed."
+msgstr "恢复命令执行失败。"

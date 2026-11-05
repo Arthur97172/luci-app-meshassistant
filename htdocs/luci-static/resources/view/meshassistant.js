@@ -17,6 +17,8 @@ const BATCTL = '/usr/sbin/batctl';
 const SCRIPT = '/meshassistant/meshassistant.sh';
 const PEERS_FILE = '/tmp/meshassistant_peers';
 const LOG_FILE = '/tmp/meshassistant.log';
+const BACKUP_DIR = '/etc/meshassistant/backup';
+const BACKUP_SELECTION = '/tmp/meshassistant_backup_selection';
 
 const callLanStatus = rpc.declare({
 	object: 'network.interface',
@@ -430,6 +432,105 @@ function renderStatus(status) {
 	return E('div', { 'class': 'cbi-section' }, children);
 }
 
+/*
+ * Backups
+ *
+ * The script prints one tab-separated line per archive from "backup list":
+ * file name, creation time, hostname, LAN address and role.  The list is shown
+ * newest first; the same order is used by the selection dialogs.
+ */
+
+function parseBackupList(reply) {
+	const backups = [];
+	const text = (reply && reply.stdout) || '';
+
+	for (const line of text.split(/\r?\n/)) {
+		if (!line)
+			continue;
+
+		const fields = line.split('\t');
+
+		if (!fields[0])
+			continue;
+
+		backups.push({
+			name: fields[0],
+			created: fields[1] || '',
+			hostname: fields[2] || '',
+			lan_ip: fields[3] || '',
+			role: fields[4] || ''
+		});
+	}
+
+	backups.sort(function(a, b) {
+		return a.name < b.name ? 1 : a.name > b.name ? -1 : 0;
+	});
+
+	return backups;
+}
+
+function backupRoleLabel(role) {
+	switch (role) {
+	case 'server':
+		return _('Server');
+	case 'off':
+		return _('Node');
+	case 'client':
+		return _('Client');
+	default:
+		return role || '';
+	}
+}
+
+function backupLabel(backup) {
+	const parts = [];
+
+	if (backup.created)
+		parts.push(backup.created);
+	if (backup.hostname)
+		parts.push(backup.hostname);
+	if (backup.lan_ip)
+		parts.push(backup.lan_ip);
+
+	const role = backupRoleLabel(backup.role);
+
+	if (role)
+		parts.push(role);
+
+	parts.push(backup.name);
+
+	return parts.join(' · ');
+}
+
+function backupSelect(backups, onChange) {
+	const select = E('select', {
+		'class': 'cbi-input-select',
+		'style': 'width:100%'
+	}, backups.map(function(backup) {
+		return E('option', {
+			'value': backup.name,
+			'selected': backup === backups[0] ? '' : null
+		}, [ backupLabel(backup) ]);
+	}));
+
+	select.addEventListener('change', function(ev) {
+		onChange(ev.target.value);
+	});
+
+	return select;
+}
+
+function createAutoBackup() {
+	return fs.exec(SCRIPT, [ 'backup', 'create' ]).then(function(reply) {
+		if (reply && reply.code)
+			throw new Error((reply.stderr || '').trim() || _('The backup command failed.'));
+	}).catch(function(err) {
+		ui.addNotification(null, E('p', [
+			_('Failed to create the automatic backup: %s').format(err)
+		]), 'warning');
+	});
+}
+
 function runScript(args) {
 	return fs.exec(SCRIPT, args).then(function() {
 		ui.addNotification(null, E('p', [
@@ -450,6 +551,7 @@ return view.extend({
 	wiredPorts: [],
 	status: { ok: true, rows: [] },
 	logText: '',
+	backups: [],
 	lanDefaults: { ipaddr: '', netmask: '', gateway: '', dns: '' },
 
 	load() {
@@ -534,6 +636,24 @@ return view.extend({
 				});
 				this.countryList = (countries && countries.results) || [];
 			});
+		});
+	},
+
+	/*
+	 * The user asked for a snapshot of the configuration as it is before
+	 * Save & Apply writes the form.  Overriding handleSaveApply (and not
+	 * handleSave) leaves the plain Save button alone.
+	 */
+	handleSaveApply(ev, mode) {
+		const self = this;
+
+		return createAutoBackup().then(function() {
+			if (typeof self.refreshBackups === 'function')
+				self.refreshBackups();
+
+			const base = view.prototype.handleSaveApply;
+
+			return base ? base.call(self, ev, mode) : undefined;
 		});
 	},
 
@@ -989,6 +1109,255 @@ return view.extend({
 				'data-tab-title': _('Mesh Status')
 			}, [ statusEl ]);
 
+			const backupListEl = E('div', { 'class': 'cbi-section-descr' }, [
+				_('Loading backups...')
+			]);
+
+			const renderBackupList = () => {
+				const backups = this.backups || [];
+
+				while (backupListEl.childNodes.length)
+					backupListEl.removeChild(backupListEl.childNodes[0]);
+
+				if (backups.length === 0) {
+					backupListEl.appendChild(E('p', {}, [ _('No backups found.') ]));
+					return;
+				}
+
+				backupListEl.appendChild(E('ul', {
+					'style': 'margin:0;padding-inline-start:1.2rem'
+				}, backups.map(function(backup) {
+					return E('li', {}, [ backupLabel(backup) ]);
+				})));
+			};
+
+			/*
+			 * This is called directly while rendering and after the backup
+			 * commands, not only from a click, so it must not be wrapped in
+			 * ui.createHandlerFn: that wrapper reads the event's currentTarget
+			 * and throws when it is called without an event.
+			 */
+			const refreshBackups = () => {
+				return fs.exec(SCRIPT, [ 'backup', 'list' ]).then((reply) => {
+					if (reply && reply.code)
+						throw new Error((reply.stderr || '').trim() ||
+							_('The backup list could not be read.'));
+
+					this.backups = parseBackupList(reply);
+					renderBackupList();
+				}).catch((err) => {
+					this.backups = [];
+
+					while (backupListEl.childNodes.length)
+						backupListEl.removeChild(backupListEl.childNodes[0]);
+
+					backupListEl.appendChild(E('p', { 'class': 'alert-message error' }, [
+						_('Failed to read the backups: %s').format(err)
+					]));
+				});
+			};
+
+			this.refreshBackups = refreshBackups;
+
+			const createBackup = ui.createHandlerFn(this, function() {
+				return fs.exec(SCRIPT, [ 'backup', 'create' ]).then((reply) => {
+					if (reply && reply.code)
+						throw new Error((reply.stderr || '').trim() ||
+							_('The backup command failed.'));
+
+					return refreshBackups();
+				}).catch((err) => {
+					ui.addNotification(null, E('p', [
+						_('Failed to create the backup: %s').format(err)
+					]), 'error');
+				});
+			});
+
+			const restoreBackup = ui.createHandlerFn(this, function() {
+				const backups = this.backups || [];
+
+				if (backups.length === 0) {
+					ui.addNotification(null, E('p', [ _('No backups found.') ]), 'warning');
+					return;
+				}
+
+				let selected = backups[0].name;
+				const choice = [];
+
+				if (backups.length > 1) {
+					choice.push(E('div', { 'style': 'margin:0.5rem 0' }, [
+						backupSelect(backups, function(name) { selected = name; })
+					]));
+				}
+				else {
+					choice.push(E('p', {}, [ backupLabel(backups[0]) ]));
+				}
+
+				ui.showModal(_('Restore Backup'), [
+					E('p', {}, [
+						_('Restoring a backup overwrites the current network, wireless, DHCP, firewall, system and Mesh Assistant configuration. The connection may drop and the management address may change.')
+					]),
+					E('p', {}, [
+						_('A backup of the current configuration is created before restoring.')
+					])
+				].concat(choice, [
+					E('div', { 'class': 'right' }, [
+						E('button', {
+							'class': 'btn cbi-button',
+							'click': ui.hideModal
+						}, _('Cancel')),
+						' ',
+						E('button', {
+							'class': 'btn cbi-button-negative',
+							'click': ui.createHandlerFn(this, function() {
+								ui.hideModal();
+
+								return fs.write(BACKUP_SELECTION, selected, 384).then(function() {
+									return fs.exec(SCRIPT, [ '--detach', 'backup', 'restore' ]);
+								}).then(function(reply) {
+									if (reply && reply.code)
+										throw new Error((reply.stderr || '').trim() ||
+											_('The restore command failed.'));
+
+									ui.addNotification(null, E('p', [
+										_('The backup is being restored in the background. The connection may drop.')
+									]), 'info');
+								}).catch(function(err) {
+									ui.addNotification(null, E('p', [
+										_('Failed to restore the backup: %s').format(err)
+									]), 'error');
+								});
+							})
+						}, _('Restore'))
+					])
+				]));
+			});
+
+			const deleteBackup = ui.createHandlerFn(this, function() {
+				const backups = this.backups || [];
+
+				if (backups.length === 0) {
+					ui.addNotification(null, E('p', [ _('No backups found.') ]), 'warning');
+					return;
+				}
+
+				let selected = backups[0].name;
+				const choice = [];
+
+				if (backups.length > 1) {
+					choice.push(E('div', { 'style': 'margin:0.5rem 0' }, [
+						backupSelect(backups, function(name) { selected = name; })
+					]));
+				}
+				else {
+					choice.push(E('p', {}, [ backupLabel(backups[0]) ]));
+				}
+
+				ui.showModal(_('Delete Backup'), [
+					E('p', {}, [ _('Deleting a backup cannot be undone.') ])
+				].concat(choice, [
+					E('div', { 'class': 'right' }, [
+						E('button', {
+							'class': 'btn cbi-button',
+							'click': ui.hideModal
+						}, _('Cancel')),
+						' ',
+						E('button', {
+							'class': 'btn cbi-button-negative',
+							'click': ui.createHandlerFn(this, function() {
+								ui.hideModal();
+
+								return fs.write(BACKUP_SELECTION, selected, 384).then(function() {
+									return fs.exec(SCRIPT, [ 'backup', 'delete' ]);
+								}).then(function(reply) {
+									if (reply && reply.code)
+										throw new Error((reply.stderr || '').trim() ||
+											_('The delete command failed.'));
+
+									return refreshBackups();
+								}).catch(function(err) {
+									ui.addNotification(null, E('p', [
+										_('Failed to delete the backup: %s').format(err)
+									]), 'error');
+								});
+							})
+						}, _('Delete'))
+					])
+				]));
+			});
+
+			const clearBackups = ui.createHandlerFn(this, function() {
+				if ((this.backups || []).length === 0) {
+					ui.addNotification(null, E('p', [ _('No backups found.') ]), 'warning');
+					return;
+				}
+
+				ui.showModal(_('Clear Backups'), [
+					E('p', {}, [ _('All backups will be deleted. This cannot be undone.') ]),
+					E('div', { 'class': 'right' }, [
+						E('button', {
+							'class': 'btn cbi-button',
+							'click': ui.hideModal
+						}, _('Cancel')),
+						' ',
+						E('button', {
+							'class': 'btn cbi-button-negative',
+							'click': ui.createHandlerFn(this, function() {
+								ui.hideModal();
+
+								return fs.exec(SCRIPT, [ 'backup', 'clear' ]).then(function(reply) {
+									if (reply && reply.code)
+										throw new Error((reply.stderr || '').trim() ||
+											_('The clear command failed.'));
+
+									return refreshBackups();
+								}).catch(function(err) {
+									ui.addNotification(null, E('p', [
+										_('Failed to clear the backups: %s').format(err)
+									]), 'error');
+								});
+							})
+						}, _('Clear All'))
+					])
+				]);
+			});
+
+			const backupPane = E('div', {
+				'data-tab': 'backup',
+				'data-tab-title': _('Backup Management')
+			}, [
+				E('div', { 'class': 'cbi-section' }, [
+					E('div', { 'style': 'margin-bottom:0.5rem' }, [
+						E('button', {
+							'class': 'btn cbi-button cbi-button-action',
+							'style': 'margin:0.5rem 0 0 0.5rem',
+							'click': createBackup
+						}, [ _('Create Backup') ]),
+						E('button', {
+							'class': 'btn cbi-button cbi-button-action',
+							'style': 'margin:0.5rem 0 0 0.5rem',
+							'click': restoreBackup
+						}, [ _('Restore Backup') ]),
+						E('button', {
+							'class': 'btn cbi-button cbi-button-remove',
+							'style': 'margin:0.5rem 0 0 0.5rem',
+							'click': deleteBackup
+						}, [ _('Delete Backup') ]),
+						E('button', {
+							'class': 'btn cbi-button cbi-button-remove',
+							'style': 'margin:0.5rem 0 0 0.5rem',
+							'click': clearBackups
+						}, [ _('Clear Backups') ])
+					]),
+					E('p', { 'class': 'cbi-section-descr' }, [
+						_('Backups are stored in %s.').format(BACKUP_DIR)
+					]),
+					backupListEl
+				])
+			]);
+
+			refreshBackups();
+
 			const logContent = E('pre', {
 				'style': 'white-space:pre-wrap;word-break:break-word;max-height:60vh;overflow:auto;margin:1rem 0 0 0.5rem;padding-bottom:0.5rem'
 			}, [ this.logText || _('No log entries.') ]);
@@ -1041,7 +1410,7 @@ return view.extend({
 			 * menu, so set the gap inline; the theme rules cannot override it.
 			 */
 			const tabsEl = E('div', { 'style': 'margin-block-start: 0.5rem' },
-				[ settingsEl, statusPane, logPane ]);
+				[ settingsEl, statusPane, backupPane, logPane ]);
 			const pageEl = E('div', {}, [ tabsEl ]);
 
 			ui.tabs.initTabGroup(tabsEl.childNodes);

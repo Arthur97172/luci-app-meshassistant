@@ -1695,6 +1695,324 @@ disable_meshassistant() {
     log_note "Done."
 }
 
+# ---------------------------------------------------------------------------
+# Configuration backups
+#
+# The LuCI "Backup Management" tab and the automatic backup before a mesh
+# apply both use these subcommands.  A backup is an uncompressed tar archive
+# of the UCI config files plus a manifest with the creation time, hostname,
+# LAN address, role and the enable state of the services the mesh script can
+# change.  Restoring writes the files back, restores the recorded service
+# states and reloads the network.  The archives contain WiFi and mesh keys, so
+# the directory is 0700 and the files are 0600.
+# ---------------------------------------------------------------------------
+
+MESHASSISTANT_BACKUP_DIR=${MESHASSISTANT_BACKUP_DIR:-/etc/meshassistant/backup}
+MESHASSISTANT_BACKUP_SELECTION=${MESHASSISTANT_BACKUP_SELECTION:-/tmp/meshassistant_backup_selection}
+MESHASSISTANT_CONFIG_DIR=${MESHASSISTANT_CONFIG_DIR:-/etc/config}
+MESHASSISTANT_BACKUP_CONFIGS="network wireless dhcp firewall system meshassistant"
+
+# True while a service is enabled at boot.
+backup_service_state() {
+    if /etc/init.d/"$1" enabled >/dev/null 2>&1; then
+        printf '1\n'
+    else
+        printf '0\n'
+    fi
+}
+
+# Read one key from a manifest file.  Keys are fixed strings from the code.
+backup_manifest_get() {
+    local file="$1" key="$2"
+    sed -n "s/^${key}=//p" "$file" 2>/dev/null | head -n 1
+}
+
+# Read and validate the filename written by the LuCI page.  Only a plain
+# archive name in the backup directory is accepted; the selection file is
+# removed even when the name is rejected.
+backup_read_selection() {
+    local name
+    if [ ! -f "$MESHASSISTANT_BACKUP_SELECTION" ]; then
+        echo "No backup was selected." >&2
+        return 1
+    fi
+
+    name=$(cat "$MESHASSISTANT_BACKUP_SELECTION")
+    rm -f "$MESHASSISTANT_BACKUP_SELECTION"
+
+    case "$name" in
+        ''|.*|*/*|*\\*|*..*|*[!A-Za-z0-9._-]*)
+            echo "Invalid backup name." >&2
+            return 1
+            ;;
+    esac
+
+    # The pattern above accepts only plain archive names; require the suffix.
+    case "$name" in
+        *.tar) printf '%s\n' "$name" ;;
+        *) echo "Invalid backup name." >&2; return 1 ;;
+    esac
+}
+
+# Create /etc/meshassistant/backup/<YYYYMMDD-HHMMSS>.tar from the current
+# configuration.  A same-second collision gets a numeric suffix.
+backup_create() {
+    local dir="$MESHASSISTANT_BACKUP_DIR" cfgdir="$MESHASSISTANT_CONFIG_DIR"
+    local stamp file tarball tmp config n=1
+    local hostname ip role enabled created
+
+    mkdir -p "$dir" || {
+        echo "Unable to create the backup directory $dir." >&2
+        return 1
+    }
+    chmod 700 "$dir" 2>/dev/null
+
+    stamp=$(date '+%Y%m%d-%H%M%S')
+    file="$dir/$stamp.tar"
+    while [ -e "$file" ]; do
+        file="$dir/$stamp-$n.tar"
+        n=$((n + 1))
+    done
+
+    tmp=$(mktemp -d /tmp/meshassistant-backup.XXXXXX) || {
+        echo "Unable to create a temporary directory." >&2
+        return 1
+    }
+
+    mkdir -p "$tmp/etc/config"
+    for config in $MESHASSISTANT_BACKUP_CONFIGS; do
+        [ -f "$cfgdir/$config" ] && cp "$cfgdir/$config" "$tmp/etc/config/$config"
+    done
+
+    if [ ! -f "$tmp/etc/config/network" ]; then
+        echo "No network configuration found in $cfgdir." >&2
+        rm -rf "$tmp"
+        return 1
+    fi
+
+    hostname=$(uci -q get system.@system[0].hostname)
+    [ -n "$hostname" ] || hostname=$(cat /proc/sys/kernel/hostname 2>/dev/null)
+    ip=$(lan_ipv4 2>/dev/null)
+    role=$(uci -q get meshassistant.config.role)
+    role=${role:-server}
+    enabled=$(uci -q get meshassistant.config.enabled)
+    enabled=${enabled:-0}
+    created=$(date '+%Y-%m-%d %H:%M:%S')
+
+    # Strip characters that would break the tab-separated "backup list" API.
+    hostname=$(printf '%s' "$hostname" | tr '\t' ' ')
+    role=$(printf '%s' "$role" | tr '\t' ' ')
+    ip=$(printf '%s' "$ip" | tr '\t' ' ')
+
+    {
+        printf 'created=%s\n' "$created"
+        printf 'hostname=%s\n' "$hostname"
+        printf 'lan_ip=%s\n' "$ip"
+        printf 'role=%s\n' "$role"
+        printf 'enabled=%s\n' "$enabled"
+        printf 'firewall=%s\n' "$(backup_service_state firewall)"
+        printf 'dnsmasq=%s\n' "$(backup_service_state dnsmasq)"
+        printf 'odhcpd=%s\n' "$(backup_service_state odhcpd)"
+    } > "$tmp/manifest"
+
+    # Build a hidden temporary archive first, so "backup list" never sees a
+    # partially written file.
+    tarball="$dir/.backup.$$"
+    if ! tar -cf "$tarball" -C "$tmp" manifest etc/config; then
+        echo "Unable to create the backup archive." >&2
+        rm -rf "$tmp" "$tarball"
+        return 1
+    fi
+
+    if ! mv "$tarball" "$file"; then
+        echo "Unable to store the backup archive." >&2
+        rm -rf "$tmp" "$tarball"
+        return 1
+    fi
+
+    chmod 600 "$file"
+    rm -rf "$tmp"
+    echo "Created backup: $file"
+}
+
+# Print one tab-separated line per archive:
+#   name<TAB>created<TAB>hostname<TAB>lan_ip<TAB>role
+backup_list() {
+    local dir="$MESHASSISTANT_BACKUP_DIR" file manifest
+    local name created hostname ip role
+
+    [ -d "$dir" ] || return 0
+
+    for file in "$dir"/*.tar; do
+        [ -f "$file" ] || continue
+
+        manifest=$(tar -xOf "$file" manifest 2>/dev/null) || manifest=''
+        [ -n "$manifest" ] || continue
+
+        name=$(basename "$file")
+        created=$(printf '%s\n' "$manifest" | sed -n 's/^created=//p' | head -n 1)
+        hostname=$(printf '%s\n' "$manifest" | sed -n 's/^hostname=//p' | head -n 1)
+        ip=$(printf '%s\n' "$manifest" | sed -n 's/^lan_ip=//p' | head -n 1)
+        role=$(printf '%s\n' "$manifest" | sed -n 's/^role=//p' | head -n 1)
+
+        printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$created" "$hostname" "$ip" "$role"
+    done
+}
+
+# Check that the archive only contains the expected names.  This runs before
+# extraction, so an archive with a path traversal entry cannot write outside
+# the temporary directory.
+backup_validate_archive() {
+    local file="$1" entries entry
+    local found_manifest=0 found_network=0
+
+    entries=$(tar -tf "$file" 2>/dev/null) || {
+        echo "The backup archive cannot be read." >&2
+        return 1
+    }
+
+    while IFS= read -r entry; do
+        [ -n "$entry" ] || continue
+        case "$entry" in
+            manifest) found_manifest=1 ;;
+            etc/config/network) found_network=1 ;;
+            etc|etc/|etc/config|etc/config/|etc/config/wireless|etc/config/dhcp|etc/config/firewall|etc/config/system|etc/config/meshassistant) ;;
+            *)
+                echo "Unexpected file in the backup: $entry" >&2
+                return 1
+                ;;
+        esac
+    done <<EOF
+$entries
+EOF
+
+    if [ "$found_manifest" != 1 ] || [ "$found_network" != 1 ]; then
+        echo "The backup is missing its manifest or network configuration." >&2
+        return 1
+    fi
+}
+
+backup_restore() {
+    local name file tmp config service state
+
+    name=$(backup_read_selection) || return 1
+    file="$MESHASSISTANT_BACKUP_DIR/$name"
+
+    if [ ! -f "$file" ]; then
+        echo "Backup not found: $name" >&2
+        return 1
+    fi
+
+    echo "Restoring backup: $file"
+
+    # Keep a snapshot of the current configuration as well, so a restore can
+    # itself be undone.  A failure here must not prevent the restore.
+    backup_create >/dev/null || echo "Warning: could not create a safety backup."
+
+    if ! backup_validate_archive "$file"; then
+        return 1
+    fi
+
+    tmp=$(mktemp -d /tmp/meshassistant-restore.XXXXXX) || {
+        echo "Unable to create a temporary directory." >&2
+        return 1
+    }
+
+    if ! tar -xf "$file" -C "$tmp"; then
+        echo "Unable to extract the backup archive." >&2
+        rm -rf "$tmp"
+        return 1
+    fi
+
+    # Refuse a corrupt UCI file instead of writing it over a working config.
+    for config in $MESHASSISTANT_BACKUP_CONFIGS; do
+        [ -f "$tmp/etc/config/$config" ] || continue
+        if [ -L "$tmp/etc/config/$config" ]; then
+            echo "The backup contains a symbolic link for $config." >&2
+            rm -rf "$tmp"
+            return 1
+        fi
+        if ! uci -q -c "$tmp/etc/config" show "$config" >/dev/null 2>&1; then
+            echo "The backup contains an invalid $config configuration." >&2
+            rm -rf "$tmp"
+            return 1
+        fi
+    done
+
+    for config in $MESHASSISTANT_BACKUP_CONFIGS; do
+        [ -f "$tmp/etc/config/$config" ] || continue
+        if ! cp "$tmp/etc/config/$config" "$MESHASSISTANT_CONFIG_DIR/$config"; then
+            echo "Unable to restore the $config configuration." >&2
+            rm -rf "$tmp"
+            return 1
+        fi
+        echo "Restored $config."
+    done
+
+    # Restore the service enable state recorded by the backup.  A node backup
+    # keeps firewall/dnsmasq/odhcpd disabled; a server backup keeps them on.
+    for service in firewall dnsmasq odhcpd; do
+        state=$(backup_manifest_get "$tmp/manifest" "$service")
+        case "$state" in
+            1)
+                /etc/init.d/"$service" enable >/dev/null 2>&1
+                /etc/init.d/"$service" start >/dev/null 2>&1
+                ;;
+            0)
+                /etc/init.d/"$service" disable >/dev/null 2>&1
+                /etc/init.d/"$service" stop >/dev/null 2>&1
+                ;;
+        esac
+    done
+
+    if [ "$(uci -q get meshassistant.config.enabled)" = 1 ]; then
+        /etc/init.d/meshassistant enable >/dev/null 2>&1
+        /etc/init.d/meshassistant restart >/dev/null 2>&1
+    else
+        /etc/init.d/meshassistant stop >/dev/null 2>&1
+    fi
+
+    rm -rf "$tmp"
+
+    echo "Running: reload_config; /etc/init.d/network reload; wifi reload"
+    reload_config
+    /etc/init.d/network reload
+    wifi reload
+
+    echo "Restore complete. The management address may have changed."
+}
+
+backup_delete() {
+    local name file
+
+    name=$(backup_read_selection) || return 1
+    file="$MESHASSISTANT_BACKUP_DIR/$name"
+
+    if [ ! -f "$file" ]; then
+        echo "Backup not found: $name" >&2
+        return 1
+    fi
+
+    rm -f "$file" || {
+        echo "Unable to delete $name." >&2
+        return 1
+    }
+
+    echo "Deleted backup: $name"
+}
+
+backup_clear() {
+    local dir="$MESHASSISTANT_BACKUP_DIR" file count=0
+
+    for file in "$dir"/*.tar; do
+        [ -f "$file" ] || continue
+        rm -f "$file" && count=$((count + 1))
+    done
+
+    rm -f "$MESHASSISTANT_BACKUP_SELECTION"
+    echo "Deleted $count backup(s)."
+}
+
 if [ "$1" = "daemon" ]; then
     daemon_meshassistant
     exit 0
@@ -1715,6 +2033,21 @@ if [ "$1" = "clearlog" ]; then
     exit 0
 fi
 
+if [ "$1" = "backup" ]; then
+    case "$2" in
+        create) backup_create ;;
+        list) backup_list ;;
+        restore) backup_restore ;;
+        delete) backup_delete ;;
+        clear) backup_clear ;;
+        *)
+            echo "Usage: $0 backup {create|list|restore|delete|clear}" >&2
+            exit 1
+            ;;
+    esac
+    exit $?
+fi
+
 if [ "$1" = "dumbap" ]; then
     log_run_header "enabling Dumb AP mode"
     set_apmode
@@ -1728,9 +2061,13 @@ else
     # Check if meshassistant is enabled
     if [ "$(uci -q get meshassistant.config.enabled)" = 1 ]; then
         log_run_header "enabling the mesh"
+        log_note "Creating a configuration backup before applying"
+        backup_create || log_note "Warning: the automatic backup failed; continuing."
         enable_meshassistant
     else
         log_run_header "disabling the mesh"
+        log_note "Creating a configuration backup before applying"
+        backup_create || log_note "Warning: the automatic backup failed; continuing."
         disable_meshassistant
     fi
 fi
