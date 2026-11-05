@@ -241,9 +241,6 @@ msgstr "服务器"
 msgid "Server Provides DHCP"
 msgstr "服务器提供 DHCP"
 
-msgid "Set the channel plan for the selected regular AP and mesh radios. The settings are written to the radios when the mesh configuration is reapplied; fields left at “Keep current” are not changed."
-msgstr "为选中的普通 AP 射频和 Mesh 射频设置信道规划。重新应用 Mesh 配置时这些设置会写入射频；保留“保持当前值”的项不会被修改。"
-
 msgid "Signal Strength"
 msgstr "信号强度"
 
@@ -288,6 +285,9 @@ msgstr "国家代码"
 
 msgid "driver default"
 msgstr "驱动默认值"
+
+msgid "This radio interface reports no frequency band, so no spectrum settings are available."
+msgstr "此射频接口未报告频段信息，因此没有可用的频谱设置。"
 
 msgid "Toggle this switch to activate or deactivate the Mesh Network on this device according to the settings specified in this configuration."
 msgstr "根据此配置中的设置，切换此开关以启用或停用本设备上的 Mesh 网络。"

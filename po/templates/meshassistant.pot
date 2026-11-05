@@ -239,9 +239,6 @@ msgstr ""
 msgid "Server Provides DHCP"
 msgstr ""
 
-msgid "Set the channel plan for the selected regular AP and mesh radios. The settings are written to the radios when the mesh configuration is reapplied; fields left at “Keep current” are not changed."
-msgstr ""
-
 msgid "Signal Strength"
 msgstr ""
 
@@ -285,6 +282,9 @@ msgid "Country Code"
 msgstr ""
 
 msgid "driver default"
+msgstr ""
+
+msgid "This radio interface reports no frequency band, so no spectrum settings are available."
 msgstr ""
 
 msgid "Toggle this switch to activate or deactivate the Mesh Network on this device according to the settings specified in this configuration."

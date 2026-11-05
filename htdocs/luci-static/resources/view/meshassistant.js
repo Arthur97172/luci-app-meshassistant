@@ -132,12 +132,21 @@ function radioOptions(devices) {
 }
 
 /*
- * The spectrum settings of more than one band are shown as sub-tabs inside
- * the Spectrum Settings tab.  LuCI groups tab pages by their data-tab /
- * data-tab-title attributes, so the already rendered rows are moved into one
- * page per band and a regular tab menu is created for them.
+ * The spectrum settings of more than one radio interface are shown as
+ * sub-tabs inside the Spectrum Settings tab: one page per radio interface,
+ * titled with its band and interface name.
+ *
+ * The menu is built here instead of through ui.tabs.  LuCI's updateTabs()
+ * hides every tab whose page has no visible rows, which would make the
+ * sub-tabs come and go with the radio selection of the basic setup and with
+ * every form re-render.  A radio interface must keep its tab in every state,
+ * so the pages use their own attributes and the menu is always complete.
+ *
+ * For the same reason the menu does not use the cbi-tabmenu class: the theme
+ * styles that class for the menus ui.tabs builds and may change the size or
+ * colour of these items with the theme.  meshassistant.css styles the menu.
  */
-function renderSpectrumTabs(mapEl, groups) {
+function renderSpectrumTabs(mapEl, radios, state) {
 	/*
 	 * The tab menu items also carry a data-tab attribute, so a plain
 	 * [data-tab="spectrum"] lookup finds the menu entry instead of the page.
@@ -148,88 +157,102 @@ function renderSpectrumTabs(mapEl, groups) {
 	if (!container)
 		return;
 
-	const nameBand = {};
-	const panes = {};
+	/*
+	 * CBI rebuilds the whole map after a save, so this runs again on a fresh
+	 * container.  Should it ever run twice on the same DOM, move the rows out
+	 * of the old pages first so they are not thrown away with them.
+	 */
+	const previous = container.querySelector('.meshassistant-spectrum-tabs');
 
-	for (const group of groups) {
-		for (const radio of group.radios) {
-			const names = [ '_spectrum_radio_' + radio ];
+	if (previous) {
+		for (const row of Array.from(previous.querySelectorAll('[data-name]')))
+			container.appendChild(row);
 
-			for (const field of [ 'band', 'mode', 'width', 'channel', 'txpower', 'country' ])
-				names.push('spectrum_' + radio + '_' + field);
+		const menu = previous.previousElementSibling;
 
-			for (const name of names)
-				nameBand[name] = group.band;
-		}
+		if (menu && menu.classList.contains('meshassistant-spectrum-tabmenu'))
+			menu.remove();
 
-		panes[group.band] = E('div', {
-			'data-tab': 'spectrum-' + group.band,
-			'data-tab-title': group.label
-		});
+		previous.remove();
 	}
 
-	for (const row of Array.from(container.querySelectorAll('[data-name]'))) {
-		const band = nameBand[row.getAttribute('data-name')];
+	const rows = {};
 
-		if (band)
-			panes[band].appendChild(row);
+	for (const { radio } of radios)
+		rows[radio] = [];
+
+	/*
+	 * Every row of a radio is named after it: the heading is
+	 * _spectrum_radio_<radio> and every field is spectrum_<radio>_<field>.
+	 */
+	for (const row of Array.from(container.querySelectorAll('[data-name]'))) {
+		const name = row.getAttribute('data-name');
+
+		for (const { radio } of radios) {
+			if (name === '_spectrum_radio_' + radio ||
+			    name.indexOf('spectrum_' + radio + '_') === 0) {
+				rows[radio].push(row);
+				break;
+			}
+		}
+	}
+
+	const panes = {};
+	const items = {};
+	const menu = E('ul', { 'class': 'meshassistant-spectrum-tabmenu' });
+
+	const activate = function(radio) {
+		state.active = radio;
+
+		for (const entry of radios) {
+			const isActive = entry.radio === radio;
+
+			/* An empty style attribute removes the inline display rule. */
+			panes[entry.radio].setAttribute('style', isActive ? '' : 'display:none');
+
+			if (isActive)
+				items[entry.radio].classList.add('meshassistant-spectrum-tab-active');
+			else
+				items[entry.radio].classList.remove('meshassistant-spectrum-tab-active');
+		}
+	};
+
+	for (const { radio, label } of radios) {
+		panes[radio] = E('div', {
+			'class': 'meshassistant-spectrum-pane',
+			'data-spectrum-tab': radio
+		}, rows[radio]);
+
+		items[radio] = E('li', { 'data-spectrum-tab': radio },
+			E('a', {
+				'href': '#',
+				'title': label + ' (' + radio + ')',
+				'click': function(ev) {
+					if (ev && typeof ev.preventDefault === 'function')
+						ev.preventDefault();
+
+					activate(radio);
+				}
+			}, label + ' (' + radio + ')'));
+
+		menu.appendChild(items[radio]);
 	}
 
 	/* Argon zeroes the top margin of the element after a tab menu. */
-	const wrapper = E('div', { 'style': 'margin-block-start: 0.5rem' },
-		groups.map(function(group) {
-			return panes[group.band];
-		}));
+	const wrapper = E('div', {
+		'class': 'meshassistant-spectrum-tabs',
+		'style': 'margin-block-start: 0.5rem'
+	}, radios.map(function(entry) {
+		return panes[entry.radio];
+	}));
 
+	container.appendChild(menu);
 	container.appendChild(wrapper);
-	ui.tabs.initTabGroup(wrapper.childNodes);
 
-	/*
-	 * CBI hides a band page once all of its radios are deselected.  If that
-	 * page was the active one the area would stay visible but empty, so
-	 * switch to a band that still has fields (checked after CBI updated the
-	 * dependency states, which happens earlier in the same event).
-	 */
-	mapEl.addEventListener('widget-change', function() {
-		keepBandTabActive(wrapper);
-	});
-}
+	/* Keep the page the user last opened across re-renders. */
+	const wanted = radios.filter(function(entry) { return entry.radio === state.active; });
 
-function keepBandTabActive(wrapper) {
-	const menu = wrapper.previousElementSibling;
-
-	if (!menu || typeof ui.tabs.isEmptyPane !== 'function')
-		return;
-
-	const panes = wrapper.children;
-	let active = null;
-
-	for (let i = 0; i < panes.length; i++) {
-		if (panes[i].getAttribute('data-tab-active') === 'true')
-			active = panes[i];
-	}
-
-	if (active && !ui.tabs.isEmptyPane(active))
-		return;
-
-	for (let i = 0; i < panes.length; i++) {
-		if (ui.tabs.isEmptyPane(panes[i]))
-			continue;
-
-		const name = panes[i].getAttribute('data-tab');
-
-		for (let j = 0; j < menu.children.length; j++) {
-			if (menu.children[j].getAttribute('data-tab') !== name)
-				continue;
-
-			const link = menu.children[j].firstElementChild;
-
-			if (link && typeof link.click === 'function')
-				link.click();
-
-			return;
-		}
-	}
+	activate(wanted.length ? state.active : radios[0].radio);
 }
 
 /*
@@ -524,8 +547,7 @@ return view.extend({
 		s.addremove = false;
 
 		s.tab('setup', _('Basic Setup'));
-		s.tab('spectrum', _('Spectrum Settings'),
-			_('Set the channel plan for the selected regular AP and mesh radios. The settings are written to the radios when the mesh configuration is reapplied; fields left at “Keep current” are not changed.'));
+		s.tab('spectrum', _('Spectrum Settings'));
 		s.tab('apmode', _('AP Mode'));
 		s.tab('advanced', _('Advanced Settings'));
 
@@ -677,197 +699,173 @@ return view.extend({
 
 		/*
 		 * Spectrum settings are stored per radio in the meshassistant config
-		 * and applied to wireless by the script on the next reapply.  A radio
-		 * is shown only while it is selected as a regular AP radio or as the
-		 * mesh radio; both roles are ORed so a radio used for both is shown
-		 * once.  Empty values are removed from the UCI config, which tells the
+		 * and applied to wireless by the script on the next reapply.  Every
+		 * radio interface of the device gets its own page and its fields are
+		 * always shown: the page layout does not follow the radio selection
+		 * of the basic setup, which only decides where the mesh is used.
+		 * Empty values are removed from the UCI config, which tells the
 		 * script to leave the radio's current setting alone.
 		 */
-		const spectrumBands = {};
-
-		for (const [ radio ] of this.radios) {
+		const spectrumRadios = this.radios.map(function([ radio ]) {
 			const band = radioBand(radio);
 
-			if (!BAND_NAMES[band])
+			return {
+				band: BAND_NAMES[band] ? band : '',
+				label: BAND_NAMES[band] || radio,
+				radio: radio
+			};
+		});
+
+		/* A single-radio device keeps a plain band heading instead. */
+		if (spectrumRadios.length === 1 && spectrumRadios[0].band) {
+			const bandHeader = s.taboption('spectrum', form.DummyValue,
+				'_spectrum_band_' + spectrumRadios[0].band, '', '');
+
+			bandHeader.default = '<h3 class="meshassistant-spectrum-band">%s</h3>'
+				.format(spectrumRadios[0].label);
+			bandHeader.rawhtml = true;
+		}
+
+		for (const { radio, band, label } of spectrumRadios) {
+			const radioHeader = s.taboption('spectrum', form.DummyValue,
+				'_spectrum_radio_' + radio, '', '');
+
+			radioHeader.default = '<h4 class="meshassistant-spectrum-radio">%s - %s</h4>'
+				.format(radio, label);
+			radioHeader.rawhtml = true;
+
+			/*
+			 * A radio without band information has no channel plan, so its
+			 * page only explains why it has no settings.
+			 */
+			if (!band) {
+				const note = s.taboption('spectrum', form.DummyValue,
+					'spectrum_' + radio + '_note', '', '');
+
+				note.default = '<p class="meshassistant-note">%s</p>'
+					.format(_('This radio interface reports no frequency band, so no spectrum settings are available.'));
+				note.rawhtml = true;
 				continue;
-
-			if (!spectrumBands[band])
-				spectrumBands[band] = [];
-
-			spectrumBands[band].push(radio);
-		}
-
-		function addRadioDeps(option, radio) {
-			option.depends({ wifi_radio: new RegExp('(^|,)' + radio + '(,|$)') });
-			option.depends({ apRadio: radio });
-		}
-
-		/*
-		 * Only bands that an actual radio of this device uses are collected,
-		 * so a router without a 6 GHz radio never gets a 6 GHz group.  With
-		 * more than one band the groups become sub-tabs of the spectrum tab
-		 * (see renderSpectrumTabs); a single-band device keeps a heading.
-		 */
-		const spectrumGroups = [];
-
-		for (const band of [ '2g', '5g', '6g' ]) {
-			if (spectrumBands[band]) {
-				spectrumGroups.push({
-					band: band,
-					label: BAND_NAMES[band],
-					radios: spectrumBands[band]
-				});
-			}
-		}
-
-		for (const group of spectrumGroups) {
-			const band = group.band;
-			const radios = group.radios;
-			const bandLabel = group.label;
-
-			if (spectrumGroups.length === 1) {
-				const bandHeader = s.taboption('spectrum', form.DummyValue,
-					'_spectrum_band_' + band, '', '');
-
-				bandHeader.default = '<h3 class="meshassistant-spectrum-band">%s</h3>'
-					.format(bandLabel);
-				bandHeader.rawhtml = true;
-
-				for (const radio of radios)
-					addRadioDeps(bandHeader, radio);
 			}
 
-			for (const radio of radios) {
-				const current = parseHtmode(uci.get('wireless', radio, 'htmode'));
-				const currentChannel = uci.get('wireless', radio, 'channel') || 'auto';
-				const currentTxpower = uci.get('wireless', radio, 'txpower') || '';
-				const currentCountry = uci.get('wireless', radio, 'country') || '';
+			const current = parseHtmode(uci.get('wireless', radio, 'htmode'));
+			const currentChannel = uci.get('wireless', radio, 'channel') || 'auto';
+			const currentTxpower = uci.get('wireless', radio, 'txpower') || '';
+			const currentCountry = uci.get('wireless', radio, 'country') || '';
 
-				const radioHeader = s.taboption('spectrum', form.DummyValue,
-					'_spectrum_radio_' + radio, '', '');
+			const bandOpt = s.taboption('spectrum', form.DummyValue,
+				'spectrum_' + radio + '_band', _('Band'),
+				_('Band plan of this radio (read-only).'));
+			bandOpt.default = label;
+			bandOpt.rawhtml = false;
 
-				radioHeader.default = '<h4 class="meshassistant-spectrum-radio">%s - %s</h4>'
-					.format(radio, bandLabel);
-				radioHeader.rawhtml = true;
-				addRadioDeps(radioHeader, radio);
+			const modeOpt = s.taboption('spectrum', form.ListValue,
+				'spectrum_' + radio + '_mode', _('PHY Mode'),
+				_('PHY layer protocol mode. Leave at “Keep current” to keep the radio mode.'));
+			modeOpt.value('', _('Keep current (%s)')
+				.format(current.mode || _('driver default')));
+			for (const mode of BAND_MODES[band])
+				modeOpt.value(mode, mode);
+			modeOpt.default = '';
+			/*
+			 * An AP radio that participates in MLO is forced to EHT by the
+			 * script, so do not offer a mode that would silently be
+			 * overwritten.  Inverted, the rule hides the selector only when
+			 * the radio is one of the AP radios and MLO is on; every other
+			 * radio keeps its selector whatever the basic setup selects.
+			 */
+			modeOpt.depends({
+				wifi_radio: new RegExp('(^|,)' + radio + '(,|$)'),
+				mlo: '1',
+				'!reverse': true
+			});
 
-				const bandOpt = s.taboption('spectrum', form.DummyValue,
-					'spectrum_' + radio + '_band', _('Band'),
-					_('Band plan of this radio (read-only).'));
-				bandOpt.default = bandLabel;
-				bandOpt.rawhtml = false;
-				addRadioDeps(bandOpt, radio);
+			let widthOpt;
 
-				const modeOpt = s.taboption('spectrum', form.ListValue,
-					'spectrum_' + radio + '_mode', _('PHY Mode'),
-					_('PHY layer protocol mode. Leave at “Keep current” to keep the radio mode.'));
-				modeOpt.value('', _('Keep current (%s)')
-					.format(current.mode || _('driver default')));
-				for (const mode of BAND_MODES[band])
-					modeOpt.value(mode, mode);
-				modeOpt.default = '';
-				/*
-				 * An AP radio that participates in MLO is forced to EHT by
-				 * the script, so do not offer a mode that would silently be
-				 * overwritten.  The mesh radio keeps its mode selector.
-				 */
-				modeOpt.depends({
-					wifi_radio: new RegExp('(^|,)' + radio + '(,|$)'),
-					mlo: '0'
-				});
-				modeOpt.depends({ apRadio: radio });
+			modeOpt.validate = function(section_id, value) {
+				if (!value)
+					return true;
 
-				let widthOpt;
+				let width = current.width;
 
-				modeOpt.validate = function(section_id, value) {
-					if (!value)
-						return true;
+				try {
+					const selected = widthOpt && widthOpt.formvalue(section_id);
 
-					let width = current.width;
-
-					try {
-						const selected = widthOpt && widthOpt.formvalue(section_id);
-
-						if (selected)
-							width = Number(selected);
-					}
-					catch (e) { }
-
-					return validSpectrumPair(band, value, width) ||
-						_('The selected PHY mode does not support this channel width.');
-				};
-
-				widthOpt = s.taboption('spectrum', form.ListValue,
-					'spectrum_' + radio + '_width', _('Channel Width'),
-					_('Channel bandwidth / channel bonding. Leave at “Keep current” to keep the radio width.'));
-				widthOpt.value('', _('Keep current (%s)')
-					.format(current.width ? current.width + ' MHz' : _('driver default')));
-				for (const width of BAND_WIDTHS[band])
-					widthOpt.value(String(width), width + ' MHz');
-				widthOpt.default = '';
-				addRadioDeps(widthOpt, radio);
-				widthOpt.validate = function(section_id, value) {
-					if (!value)
-						return true;
-
-					let mode = current.mode;
-
-					try {
-						const selected = modeOpt.formvalue(section_id);
-
-						if (selected)
-							mode = selected;
-					}
-					catch (e) { }
-
-					return validSpectrumPair(band, mode, Number(value)) ||
-						_('The selected PHY mode does not support this channel width.');
-				};
-
-				const channelOpt = s.taboption('spectrum', form.ListValue,
-					'spectrum_' + radio + '_channel', _('Channel'),
-					_('Channel planning / frequency assignment. Leave at “Keep current” to keep the radio channel.'));
-				channelOpt.value('', _('Keep current (%s)').format(currentChannel));
-				channelOpt.value('auto', _('Auto'));
-				for (const freq of bandFrequencies(this.freqList, band)) {
-					const label = isDfsChannel(band, freq.channel)
-						? _('Channel %s (%s MHz, DFS)').format(freq.channel, freq.mhz)
-						: _('Channel %s (%s MHz)').format(freq.channel, freq.mhz);
-
-					channelOpt.value(String(freq.channel), label);
+					if (selected)
+						width = Number(selected);
 				}
-				channelOpt.default = '';
-				addRadioDeps(channelOpt, radio);
+				catch (e) { }
 
-				const txpowerOpt = s.taboption('spectrum', form.Value,
-					'spectrum_' + radio + '_txpower', _('Maximum Transmit Power'),
-					_('Transmit power / EIRP in dBm. Leave empty to keep the current transmit power.'));
-				txpowerOpt.default = '';
-				txpowerOpt.placeholder = currentTxpower || '0';
-				txpowerOpt.datatype = 'range(1,40)';
-				addRadioDeps(txpowerOpt, radio);
+				return validSpectrumPair(band, value, width) ||
+					_('The selected PHY mode does not support this channel width.');
+			};
 
-				const countryOpt = s.taboption('spectrum', form.ListValue,
-					'spectrum_' + radio + '_country', _('Country Code'),
-					_('Regulatory domain (ISO/IEC 3166 alpha-2). Leave at “Keep current” to keep the current country code.'));
-				countryOpt.value('', _('Keep current (%s)')
-					.format(currentCountry || _('driver default')));
+			widthOpt = s.taboption('spectrum', form.ListValue,
+				'spectrum_' + radio + '_width', _('Channel Width'),
+				_('Channel bandwidth / channel bonding. Leave at “Keep current” to keep the radio width.'));
+			widthOpt.value('', _('Keep current (%s)')
+				.format(current.width ? current.width + ' MHz' : _('driver default')));
+			for (const width of BAND_WIDTHS[band])
+				widthOpt.value(String(width), width + ' MHz');
+			widthOpt.default = '';
+			widthOpt.validate = function(section_id, value) {
+				if (!value)
+					return true;
 
-				const seenCountries = {};
+				let mode = current.mode;
 
-				for (const country of this.countryList) {
-					const code = country.iso3166 || country.code;
+				try {
+					const selected = modeOpt.formvalue(section_id);
 
-					if (!code || seenCountries[code])
-						continue;
-
-					seenCountries[code] = true;
-					countryOpt.value(code, '%s - %s'.format(code, country.country || code));
+					if (selected)
+						mode = selected;
 				}
+				catch (e) { }
 
-				countryOpt.default = '';
-				addRadioDeps(countryOpt, radio);
+				return validSpectrumPair(band, mode, Number(value)) ||
+					_('The selected PHY mode does not support this channel width.');
+			};
+
+			const channelOpt = s.taboption('spectrum', form.ListValue,
+				'spectrum_' + radio + '_channel', _('Channel'),
+				_('Channel planning / frequency assignment. Leave at “Keep current” to keep the radio channel.'));
+			channelOpt.value('', _('Keep current (%s)').format(currentChannel));
+			channelOpt.value('auto', _('Auto'));
+			for (const freq of bandFrequencies(this.freqList, band)) {
+				const freqLabel = isDfsChannel(band, freq.channel)
+					? _('Channel %s (%s MHz, DFS)').format(freq.channel, freq.mhz)
+					: _('Channel %s (%s MHz)').format(freq.channel, freq.mhz);
+
+				channelOpt.value(String(freq.channel), freqLabel);
 			}
+			channelOpt.default = '';
+
+			const txpowerOpt = s.taboption('spectrum', form.Value,
+				'spectrum_' + radio + '_txpower', _('Maximum Transmit Power'),
+				_('Transmit power / EIRP in dBm. Leave empty to keep the current transmit power.'));
+			txpowerOpt.default = '';
+			txpowerOpt.placeholder = currentTxpower || '0';
+			txpowerOpt.datatype = 'range(1,40)';
+
+			const countryOpt = s.taboption('spectrum', form.ListValue,
+				'spectrum_' + radio + '_country', _('Country Code'),
+				_('Regulatory domain (ISO/IEC 3166 alpha-2). Leave at “Keep current” to keep the current country code.'));
+			countryOpt.value('', _('Keep current (%s)')
+				.format(currentCountry || _('driver default')));
+
+			const seenCountries = {};
+
+			for (const country of this.countryList) {
+				const code = country.iso3166 || country.code;
+
+				if (!code || seenCountries[code])
+					continue;
+
+				seenCountries[code] = true;
+				countryOpt.value(code, '%s - %s'.format(code, country.country || code));
+			}
+
+			countryOpt.default = '';
 		}
 
 		o = s.taboption('advanced', form.Flag, 'kvr', _('K/V/R'), _('Leave these settings as default unless you know what you are doing.'));
@@ -947,9 +945,16 @@ return view.extend({
 		});
 		o.depends('role', /^(off|client)$/);
 
-		return m.render().then((mapEl) => {
-			if (spectrumGroups.length > 1)
-				renderSpectrumTabs(mapEl, spectrumGroups);
+		/*
+		 * CBI re-renders the whole map after every save (Map.save ends with
+		 * renderContents), which throws away the radio pages and tab pane
+		 * classes created below.  Decorate every render, not only the first.
+		 */
+		const spectrumState = { active: null };
+
+		const decorateMap = function(mapEl) {
+			if (spectrumRadios.length > 1)
+				renderSpectrumTabs(mapEl, spectrumRadios, spectrumState);
 
 			/*
 			 * The four form tabs have very different content lengths.  Mark
@@ -963,6 +968,16 @@ return view.extend({
 					pane.classList.add('meshassistant-tab-pane');
 			}
 
+			return mapEl;
+		};
+
+		const renderContents = m.renderContents;
+
+		m.renderContents = function() {
+			return renderContents.apply(this, arguments).then(decorateMap);
+		};
+
+		return m.render().then((mapEl) => {
 			const settingsEl = E('div', {
 				'data-tab': 'settings',
 				'data-tab-title': _('Mesh Settings'),
