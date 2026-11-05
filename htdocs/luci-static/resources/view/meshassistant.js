@@ -1109,7 +1109,15 @@ return view.extend({
 				'data-tab-title': _('Mesh Status')
 			}, [ statusEl ]);
 
-			const backupListEl = E('div', { 'class': 'cbi-section-descr' }, [
+			const backupListEl = E('div', {
+				'class': 'cbi-section-descr',
+				/*
+				 * Argon adds var(--section-inset) as horizontal padding to
+				 * .cbi-section-descr.  The Run Log text has no such class, so
+				 * clear the padding to keep both tabs aligned.
+				 */
+				'style': 'margin:0;padding:0'
+			}, [
 				_('Loading backups...')
 			]);
 
@@ -1120,7 +1128,14 @@ return view.extend({
 					backupListEl.removeChild(backupListEl.childNodes[0]);
 
 				if (backups.length === 0) {
-					backupListEl.appendChild(E('p', {}, [ _('No backups found.') ]));
+					/*
+					 * Argon also pads every <p> inside .cbi-section, not just
+					 * .cbi-section-descr; clear it so this line starts at the
+					 * same x position as the storage path above.
+					 */
+					backupListEl.appendChild(E('p', { 'style': 'margin:0;padding:0' }, [
+						_('No backups found.')
+					]));
 					return;
 				}
 
@@ -1349,10 +1364,27 @@ return view.extend({
 							'click': clearBackups
 						}, [ _('Clear Backups') ])
 					]),
-					E('p', { 'class': 'cbi-section-descr' }, [
-						_('Backups are stored in %s.').format(BACKUP_DIR)
-					]),
-					backupListEl
+					/*
+					 * Match the Run Log content offset so both tabs line up.
+					 * The margins belong on one wrapper because adjacent
+					 * sibling margins would otherwise not collapse with the
+					 * button row in the same way.
+					 */
+					E('div', {
+						/*
+						 * Same spacing as the Run Log content: the bottom
+						 * padding keeps a gap below the last line.
+						 */
+						'style': 'margin:1rem 0 0 0.5rem;padding-bottom:0.5rem'
+					}, [
+						E('p', {
+							'class': 'cbi-section-descr',
+							'style': 'margin:0 0 0.5rem 0;padding:0'
+						}, [
+							_('Backups are stored in %s.').format(BACKUP_DIR)
+						]),
+						backupListEl
+					])
 				])
 			]);
 
