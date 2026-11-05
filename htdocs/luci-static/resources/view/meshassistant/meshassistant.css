@@ -65,7 +65,7 @@ html.dark .meshassistant-note {
 	gap: var(--control-gap, 0.5rem);
 	margin: 0;
 	/* Same inset as the theme's tab bars and the form rows of this pane. */
-	padding: var(--control-gap, 0.5rem) var(--section-inset, 1.25rem) 0;
+	padding: 0 var(--section-inset, 1.25rem) 0;
 	list-style: none;
 }
 
@@ -98,10 +98,11 @@ html.dark .meshassistant-note {
 }
 
 /*
- * Argon pads every tab pane by 1rem on both sides, which reads as an empty
- * line between the tab menu and the first field.  Drop the top padding for
- * these four panes; the bottom padding stays.
+ * Leave a gap between the tab menu and the first row of each page, so the
+ * content does not touch the tab bar.  The theme uses the same value for the
+ * padding of its tab pages; set it explicitly so a theme without that rule
+ * keeps the gap too.
  */
 .cbi-section-node-tabbed > .meshassistant-tab-pane[data-tab-active="true"] {
-	padding-block-start: 0;
+	padding-block-start: var(--field-gap, 1rem);
 }
