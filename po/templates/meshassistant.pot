@@ -62,7 +62,7 @@ msgstr ""
 msgid "Client"
 msgstr ""
 
-msgid "Combine the two selected radios into one Wi-Fi 7 Multi-Link Operation (MLO) access point. The selected radios are switched to EHT mode."
+msgid "Combine two selected radios into one Wi-Fi 7 Multi-Link Operation (MLO) access point. The radios are switched to EHT mode. MLO requires exactly two radios."
 msgstr ""
 
 msgid "DHCP"
@@ -135,6 +135,9 @@ msgid "Load"
 msgstr ""
 
 msgid "Local Host"
+msgstr ""
+
+msgid "MLO requires exactly two radios."
 msgstr ""
 
 msgid "Maximum Transmit Power"
@@ -218,10 +221,7 @@ msgstr ""
 msgid "Select at least one radio."
 msgstr ""
 
-msgid "Select at most two radios."
-msgstr ""
-
-msgid "Select one or two radios (2.4 GHz, 5 GHz and 6 GHz) for the regular WiFi access point. The SSID for each radio can be configured below."
+msgid "Select one or more radios (2.4 GHz, 5 GHz and 6 GHz) for the regular WiFi access point. The SSID for each radio can be configured below."
 msgstr ""
 
 msgid "Select one radio interface for mesh backhaul traffic."

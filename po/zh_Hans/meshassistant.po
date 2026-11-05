@@ -64,8 +64,8 @@ msgstr "清空日志"
 msgid "Client"
 msgstr "客户端"
 
-msgid "Combine the two selected radios into one Wi-Fi 7 Multi-Link Operation (MLO) access point. The selected radios are switched to EHT mode."
-msgstr "将所选的两个射频合并为一个 Wi-Fi 7 多链路操作（MLO）接入点。所选射频会自动切换为 EHT 模式。"
+msgid "Combine two selected radios into one Wi-Fi 7 Multi-Link Operation (MLO) access point. The radios are switched to EHT mode. MLO requires exactly two radios."
+msgstr "将所选的两个射频合并为一个 Wi-Fi 7 多链路操作（MLO）接入点，射频会自动切换为 EHT 模式。启用 MLO 需要恰好选择两个射频。"
 
 msgid "DHCP"
 msgstr "DHCP"
@@ -138,6 +138,9 @@ msgstr "负载"
 
 msgid "Local Host"
 msgstr "本机"
+
+msgid "MLO requires exactly two radios."
+msgstr "启用 MLO 需要恰好选择两个射频。"
 
 msgid "Maximum Transmit Power"
 msgstr "最大传输功率"
@@ -220,11 +223,8 @@ msgstr "运行日志"
 msgid "Select at least one radio."
 msgstr "请至少选择一个射频。"
 
-msgid "Select at most two radios."
-msgstr "最多选择两个射频。"
-
-msgid "Select one or two radios (2.4 GHz, 5 GHz and 6 GHz) for the regular WiFi access point. The SSID for each radio can be configured below."
-msgstr "选择用于普通 WiFi 接入点的一个或两个射频（2.4 GHz、5 GHz 与 6 GHz）。各射频的 SSID 可在下方配置。"
+msgid "Select one or more radios (2.4 GHz, 5 GHz and 6 GHz) for the regular WiFi access point. The SSID for each radio can be configured below."
+msgstr "选择一个或多个射频（2.4 GHz、5 GHz 与 6 GHz）用于普通 WiFi 接入点。各射频的 SSID 可在下方配置。"
 
 msgid "Select one radio interface for mesh backhaul traffic."
 msgstr "选择一个用于 Mesh 回程流量的射频接口。"

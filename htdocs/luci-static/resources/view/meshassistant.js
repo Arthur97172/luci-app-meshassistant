@@ -444,8 +444,8 @@ return view.extend({
 				});
 
 			/*
-			 * The regular AP may use up to two radios so the same WiFi
-			 * network is served on any two of 2.4 GHz, 5 GHz and 6 GHz.
+			 * Any radio can serve the regular AP, so the same WiFi network
+			 * can be offered on 2.4 GHz, 5 GHz and 6 GHz at once.
 			 * Wi-Fi 6E is WPA3-only, so hostapd starts the 6 GHz radio with
 			 * SAE even though the AP encryption is WPA2/WPA3 mixed.  A radio
 			 * with no band information is kept for older configurations.
@@ -545,11 +545,12 @@ return view.extend({
 		/*
 		 * With separate SSIDs this field only remains a fallback for radios
 		 * without their own SSID, so hide it unless the shared SSID is the
-		 * one actually configured.  MLO always uses the shared SSID.
+		 * one actually configured.  MLO always uses the shared SSID.  The
+		 * radio list is comma-joined, so two or more entries match.
 		 */
-		o.depends({ mlo: '0', ssid_mode: 'separate', wifi_radio: /^[^,]+,[^,]+$/, '!reverse': true });
+		o.depends({ mlo: '0', ssid_mode: 'separate', wifi_radio: /^[^,]+(?:,[^,]+)+$/, '!reverse': true });
 
-		o = s.taboption('setup', form.MultiValue, 'wifi_radio', _('Regular AP Radio'), _('Select one or two radios (2.4 GHz, 5 GHz and 6 GHz) for the regular WiFi access point. The SSID for each radio can be configured below.'));
+		o = s.taboption('setup', form.MultiValue, 'wifi_radio', _('Regular AP Radio'), _('Select one or more radios (2.4 GHz, 5 GHz and 6 GHz) for the regular WiFi access point. The SSID for each radio can be configured below.'));
 
 		for (const [ value, label ] of this.apRadios)
 			o.value(value, label);
@@ -570,28 +571,46 @@ return view.extend({
 		o.default = 'radio1';
 		o.rmempty = false;
 		o.validate = function(section_id, value) {
-			const count = listValues(value).length;
-
-			if (count === 0)
-				return _('Select at least one radio.');
-
-			return count <= 2 || _('Select at most two radios.');
+			return listValues(value).length > 0 || _('Select at least one radio.');
 		};
+
+		const wifiRadioOption = o;
 
 		/*
 		 * MLO combines exactly two radios into one Wi-Fi 7 access point.
 		 * The dependency matches a MultiValue converted to its comma-joined
-		 * form, so the checkbox appears only while two radios are selected.
+		 * form, so the checkbox appears once two radios are selected.  It is
+		 * also shown for three or more radios: the dependent SSID options
+		 * read an inactive option as null, so hiding MLO would hide SSID Mode
+		 * and the per-radio SSIDs as well.  The validator below keeps MLO off
+		 * unless exactly two radios are selected, which is all the driver and
+		 * the setup script support.
 		 */
-		o = s.taboption('setup', form.Flag, 'mlo', _('Enable MLO'), _('Combine the two selected radios into one Wi-Fi 7 Multi-Link Operation (MLO) access point. The selected radios are switched to EHT mode.'));
+		o = s.taboption('setup', form.Flag, 'mlo', _('Enable MLO'), _('Combine two selected radios into one Wi-Fi 7 Multi-Link Operation (MLO) access point. The radios are switched to EHT mode. MLO requires exactly two radios.'));
 		o.default = '0';
-		o.depends('wifi_radio', /^[^,]+,[^,]+$/);
+		o.depends('wifi_radio', /^[^,]+(?:,[^,]+)+$/);
+		/*
+		 * The checkbox widget always hands its enabled value ("1") to the
+		 * validator, so read the live checkbox state and the radio
+		 * selection from the form instead of the passed value.
+		 */
+		o.validate = function(section_id) {
+			if (this.formvalue(section_id) == '1' &&
+			    listValues(wifiRadioOption.formvalue(section_id)).length !== 2)
+				return _('MLO requires exactly two radios.');
 
+			return true;
+		};
+
+		/*
+		 * SSID Mode only matters once a second radio is selected; the
+		 * comma-joined list therefore has to contain at least two entries.
+		 */
 		o = s.taboption('setup', form.ListValue, 'ssid_mode', _('SSID Mode'), _('Choose whether the selected radios share one SSID or use a separate SSID per radio. Separate SSIDs disable seamless 802.11r roaming between the radios.'));
 		o.value('same', _('Same SSID'));
 		o.value('separate', _('Separate SSIDs'));
 		o.default = 'same';
-		o.depends({ mlo: '0', wifi_radio: /^[^,]+,[^,]+$/ });
+		o.depends({ mlo: '0', wifi_radio: /^[^,]+(?:,[^,]+)+$/ });
 
 		for (const [ value ] of this.apRadios) {
 			const band = BAND_NAMES[radioBand(value)];
