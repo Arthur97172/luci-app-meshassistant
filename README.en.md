@@ -114,12 +114,44 @@ troubleshooting steps are in [info/README.en.md](info/README.en.md).
 | `bat0` in `br-lan` | yes | yes | yes |
 | `wan` port in `br-lan` | no | no (except Dumb AP mode) | no (except Dumb AP mode) |
 | AP Mode tab | hidden | shown | shown |
-| Internet uplink | required for internet | not required | not required |
+| Internet uplink | required (WAN or LAN port) | not required | not required |
 | Typical use | single gateway / main device | extend mesh coverage | non-gateway mesh member |
 
 **Client** and **Node** take exactly the same code path in the current script;
 the effective configuration is identical and only the UI label differs. Use
 **Node** to extend a mesh.
+
+## Server uplink
+
+The mesh joins the server, its nodes and clients into one layer-2 segment: on
+each of them `br-lan` contains the local LAN ports, the regular AP and `bat0`,
+and both wired and wireless backhaul interfaces are attached to `bat0`. So
+whether the server connects to the upstream through its WAN port or through one
+of its LAN ports, **the LAN ports of the server, its nodes and its clients all
+reach the internet**, with either wired or wireless backhaul.
+
+- **Mode A: WAN uplink (router mode)**. The upstream router or modem connects
+  to the server's WAN port. The server keeps its firewall and NAT, uses a
+  separate static LAN subnet (for example `192.168.10.1/24`) and **Server
+  Provides DHCP** is on. Nodes/clients join that subnet by DHCP or a static
+  address with gateway and DNS pointing at the server. A device on any LAN port
+  or regular WiFi gets a `192.168.10.x` lease, reaches the server over `bat0`
+  at layer 2, and the server NATs it to the internet.
+- **Mode B: LAN uplink (DHCP reuse)**. The main router's LAN connects to one of
+  the server's LAN ports, which stays in `br-lan`. The server LAN uses an
+  address in the upstream subnet (static `192.168.5.2/24` or a DHCP client,
+  gateway/DNS pointing at the main router) and **Server Provides DHCP** is off.
+  Nodes/clients join the main router's subnet by DHCP or a static address. The
+  whole mesh is a layer-2 extension of the main router: the main router leases
+  addresses and routes/NATs the traffic, and the server does not NAT.
+- Either mode has exactly one DHCP server. The WAN ports of nodes/clients are
+  unused and must not be connected to another uplink, or a second default route
+  appears. In mode B the server itself still needs a default gateway pointing at
+  the main router, and the LAN port cabled to the main router must not be used as
+  the wired backhaul port.
+
+Field-level details and topology diagrams are in
+[section 3 of info/README.en.md](info/README.en.md#3-server-uplink-modes-and-per-role-configuration-details).
 
 ## Wired backhaul
 
@@ -138,9 +170,10 @@ All three roles support an optional dedicated wired backhaul:
 
 ## Important notes
 
-- **Server**: exactly one server per mesh. It needs a WAN or other uplink if the
-  mesh should reach the internet. Disable **Server Provides DHCP** when another
-  router on the LAN already provides DHCP.
+- **Server**: exactly one server per mesh. It can reach the upstream through its
+  WAN port (the server NATs and provides DHCP) or through a LAN port (DHCP
+  reuse: the main router NATs and provides DHCP, and **Server Provides DHCP**
+  must be off). See [Server uplink](#server-uplink).
 - **Node / Client**: no DHCP or NAT is provided. Use a static IP in **AP Mode**
   when there is no DHCP server or you need a fixed management address. Remove
   or disable any old `wwan` STA so the node does not keep a competing default

@@ -10,12 +10,13 @@ This guide explains how to build a mesh with luci-app-meshassistant: how to choo
 
 - [1. Before you start](#1-before-you-start)
 - [2. Page fields and workflow](#2-page-fields-and-workflow)
-- [3. When a Node / Client needs a static IP](#3-when-a-node--client-needs-a-static-ip)
-- [4. Configuring wired backhaul](#4-configuring-wired-backhaul)
-- [5. Dumb AP mode](#5-dumb-ap-mode)
-- [6. Verification and troubleshooting](#6-verification-and-troubleshooting)
-- [7. Mesh examples](#7-mesh-examples)
-- [8. Disabling, rolling back and recovery](#8-disabling-rolling-back-and-recovery)
+- [3. Server uplink modes and per-role configuration details](#3-server-uplink-modes-and-per-role-configuration-details)
+- [4. When a Node / Client needs a static IP](#4-when-a-node--client-needs-a-static-ip)
+- [5. Configuring wired backhaul](#5-configuring-wired-backhaul)
+- [6. Dumb AP mode](#6-dumb-ap-mode)
+- [7. Verification and troubleshooting](#7-verification-and-troubleshooting)
+- [8. Mesh examples](#8-mesh-examples)
+- [9. Disabling, rolling back and recovery](#9-disabling-rolling-back-and-recovery)
 
 ## 1. Before you start
 
@@ -27,11 +28,12 @@ This guide explains how to build a mesh with luci-app-meshassistant: how to choo
 
 ### 1.2 Plan the topology
 
-Decide these four things before configuring anything:
+Decide these five things before configuring anything:
 
 | Item | Description |
 | --- | --- |
 | Roles | Exactly one **Server** per mesh; every other device is a **Node**. **Client** behaves the same as Node in the current script. |
+| Uplink | The server connects to the upstream through its WAN port (the server NATs), or through a LAN port (the main router NATs and provides DHCP); see [section 3](#3-server-uplink-modes-and-per-role-configuration-details) |
 | Management addresses | Server address, each node address, netmask, gateway and DNS |
 | Mesh radio | The same radio on every device (for example `radio0` or `radio1`) |
 | Backhaul | Wireless only, or dedicated wired backhaul between some devices |
@@ -87,7 +89,7 @@ Menu entry: **Network → Mesh Assistant** (Chinese: **网络 → MESH助手**).
 | Mesh Gateway IP Address | Node's default gateway; normally the server's LAN address. In a DHCP-reuse topology, use the address of the actual internet router. |
 | IPv4 netmask | Match the server/main router; commonly `255.255.255.0`. |
 | DNS Server | Normally the server's LAN address; an upstream router or a public DNS server also works. |
-| Enable Dumb AP Mode | Converts the node into a dumb AP attached to an existing network. It changes the management address and asks for confirmation first. See [section 5](#5-dumb-ap-mode). |
+| Enable Dumb AP Mode | Converts the node into a dumb AP attached to an existing network. It changes the management address and asks for confirmation first. See [section 6](#6-dumb-ap-mode). |
 
 These settings are not limited to Dumb AP mode: a normal node enable also applies IP Mode and hostname. The previous LAN and hostname values are backed up and restored when the mesh is disabled.
 
@@ -102,9 +104,103 @@ K/V/R, Mobility Domain (four hex digits) and the RSSI thresholds tune roaming. L
 3. Recommended order: **server first, then nodes**. The server forms the mesh gateway; nodes can only join once it exists.
 4. Networking and wireless restart during the apply, so the page may disconnect briefly. Reconnect and refresh once the restart has finished.
 
-## 3. When a Node / Client needs a static IP
+## 3. Server uplink modes and per-role configuration details
 
-### 3.1 What "IP Mode" means on a node
+The mesh joins all devices into one layer-2 segment: on the server, a node and a client alike, `br-lan` contains the local LAN ports, the regular AP and `bat0`; the wired and wireless backhaul interfaces are attached to `bat0` as hardifs. Therefore, **whether the server connects to the upstream through its WAN port or through one of its LAN ports, the LAN ports of the server and of its mesh nodes/clients (with either wired or wireless backhaul) are in the same layer-2 domain, and devices plugged into those LAN ports can reach the internet**.
+
+The two modes differ only in who routes/NATs and who hands out DHCP leases.
+
+### 3.1 Layer-2 layout of the three roles
+
+| Role | `br-lan` members | `bat0` gateway mode | Firewall / DHCP / DNS |
+| --- | --- | --- | --- |
+| Server | LAN ports + regular AP + `bat0` | `server` | running; with a WAN uplink the server does NAT and DHCP |
+| Node | LAN ports + regular AP + `bat0` | `off` | disabled (recorded and restored when the mesh is disabled) |
+| Client | same as Node | `off` | same as Node |
+
+- The WAN port of a node/client is never added to `br-lan` and is unused in both modes. Do not connect a node's/client's WAN port to another router or modem, or a second default route or a loop will appear (Dumb AP mode is the exception; see [section 6](#6-dumb-ap-mode)).
+- The LAN port selected as **Wired Backhaul Port** is removed from `br-lan` and bound to `bat0` as a `batadv_hardif`, carrying only mesh frames. The device's other LAN ports stay in `br-lan` and keep providing layer-2 access to clients.
+- Wireless backhaul is provided by the 802.11s `mesh_batman` hardif attached to `bat0`. When both wired and wireless backhaul exist, BATMAN_V automatically picks the better path.
+
+> **Result**: whether a node or client joins over wired or wireless backhaul, its LAN ports and regular WiFi are in the same layer-2 segment as the server (or, in mode B, the upstream main router). A device plugged into any of those LAN ports gets an address by DHCP and reaches the internet.
+
+### 3.2 Mode A: server uplink through the WAN port (router mode)
+
+```text
+[Internet] ── upstream router / modem ──WAN── [Server 192.168.10.1]
+                                                 │ br-lan: LAN ports + regular AP + bat0
+                                                 ~~~~ wireless / wired backhaul ~~~~
+                                                 │
+                                          [Node / Client 192.168.10.x]
+                                                 │ br-lan: remaining LAN ports + regular AP
+                                             PCs, TVs and other clients
+```
+
+**Server**
+
+| Item | Configuration |
+| --- | --- |
+| WAN | DHCP client, PPPoE or static address as required by the upstream (Network → Interfaces → WAN) |
+| LAN | a separate static subnet, for example `192.168.10.1/24` (Network → Interfaces → LAN) |
+| Server Provides DHCP | on (unless another DHCP server exists on the server's LAN) |
+| Mesh Mode | Server |
+
+The script keeps the WAN interface; if the firewall `wan` zone has an empty network list, it adds `wan` to that zone, and it ensures `masq=1` and a `lan → wan` forwarding rule. It also adds `bat0` to the firewall `lan` zone. With **Server Provides DHCP** on, `dnsmasq` and `odhcpd` are kept or restored.
+
+**Node / Client**
+
+| Item | Configuration |
+| --- | --- |
+| Mesh Mode | Node (or Client) |
+| IP Mode | DHCP (leased by the server), or Static |
+| Static address / gateway / netmask / DNS | for example `192.168.10.2` / `192.168.10.1` / `255.255.255.0` / `192.168.10.1` |
+| WAN port | unused |
+
+**Path to the internet**: a device plugged into any LAN port, or joined to the regular WiFi of any device, gets a `192.168.10.x` lease from the server. At layer 2 its traffic crosses `bat0` (over the wireless or wired backhaul) to the server, which NATs it out of the WAN port. IPv6 RA is provided by the server as well (while **Server Provides DHCP** is on).
+
+### 3.3 Mode B: server uplink through a LAN port (DHCP reuse / same-subnet bridging)
+
+```text
+[Internet] ── main router 192.168.5.1 (DHCP + IPv6 RA) ──LAN── [Server 192.168.5.2]
+                                                                  │ br-lan: one LAN port to the upstream, other LAN ports + regular AP + bat0
+                                                                  ~~~~ wireless / wired backhaul ~~~~
+                                                                  │
+                                                           [Node / Client 192.168.5.x]
+                                                                  │ br-lan: remaining LAN ports + regular AP
+                                                              PCs, TVs and other clients
+```
+
+**Server**
+
+| Item | Configuration |
+| --- | --- |
+| Uplink | main router LAN → one of the server's LAN ports; that port must stay in `br-lan` and must not be selected as **Wired Backhaul Port** |
+| LAN | under Network → Interfaces → LAN, use an address in the upstream subnet: static `192.168.5.2/24` with gateway and DNS `192.168.5.1`, or a DHCP client |
+| Server Provides DHCP | **off** (the main router provides DHCP) |
+| WAN | unused; this avoids a second default route next to the LAN uplink |
+| Mesh Mode | Server |
+
+The script sets `bat0` to `gw_mode=server` and adds it to `br-lan` and to the firewall `lan` zone. With **Server Provides DHCP** off it sets `dhcp.lan.ignore=1`, `ra=disabled` and `dhcpv6=disabled`, and disables `odhcpd`; `dnsmasq` stays enabled for DNS but hands out no leases.
+
+**Node / Client**
+
+- **IP Mode** can be DHCP (the main router leases a `192.168.5.x` address) or Static (for example `192.168.5.3`, gateway/DNS `192.168.5.1`).
+- To use DNS or filtering on the server, set the gateway/DNS to `192.168.5.2` and make sure the server forwards traffic to the main router.
+
+**Path to the internet**: the server's `br-lan` is bridged at layer 2 to the main router's LAN through the uplink LAN port, and `bat0` extends that same subnet across the mesh. The main router leases addresses; client traffic goes directly to it at layer 2, and the main router NATs it, so it never passes through the server's routing or NAT. IPv6 RA comes from the main router as well.
+
+> In mode B the server does no NAT, so it still needs a default gateway pointing at the main router (a static gateway or one learned by DHCP); otherwise the server itself cannot reach the internet or update packages.
+
+### 3.4 Requirements common to both modes
+
+- Exactly one server per mesh. Nodes/clients provide no DHCP or NAT and do not route; they must not be connected to any WAN uplink.
+- The whole network has exactly one DHCP server: the server in mode A, the main router in mode B. Set **Server Provides DHCP** accordingly.
+- Wired and wireless backhaul can be mixed. Backhaul only changes the layer-2 path, not the address plan, and both uplink modes support both kinds of backhaul.
+- In mode B, the LAN port cabled to the main router must not be selected as the wired backhaul port; use another pair of dedicated LAN ports when wired backhaul is needed.
+
+## 4. When a Node / Client needs a static IP
+
+### 4.1 What "IP Mode" means on a node
 
 Nodes and Clients do not provide DHCP and do not perform NAT. They disable `firewall`, `dnsmasq` and `odhcpd`, add only `bat0` to `br-lan`, and reach the server at layer 2 through the mesh.
 
@@ -115,7 +211,7 @@ Nodes and Clients do not provide DHCP and do not perform NAT. They disable `fire
   - another router already on the LAN.
 - **Static**: the script sets the node LAN to a static address using the address, netmask, gateway and DNS you enter.
 
-### 3.2 When to use a static IP
+### 4.2 When to use a static IP
 
 | Situation | Why |
 | --- | --- |
@@ -126,7 +222,7 @@ Nodes and Clients do not provide DHCP and do not perform NAT. They disable `fire
 | Dumb AP deployment | A dumb AP should normally have a fixed management address. |
 | Troubleshooting | A static address removes DHCP as a variable when a node goes unreachable. |
 
-### 3.3 When DHCP is fine
+### 4.3 When DHCP is fine
 
 - The server has **Server Provides DHCP** enabled and the node can obtain an address through the mesh;
 - or the LAN has a reliable main-router DHCP server;
@@ -134,7 +230,7 @@ Nodes and Clients do not provide DHCP and do not perform NAT. They disable `fire
 
 In DHCP mode, find the node's address under **Status → DHCP Leases** on the server, or in `/tmp/dhcp.leases` over SSH. The node hostname (`node2`, `node3`, …) normally appears in the lease as well, which makes identification easier.
 
-### 3.4 Static IP rules
+### 4.4 Static IP rules
 
 Assuming the server LAN is `192.168.10.1/24`:
 
@@ -149,7 +245,7 @@ Assuming the server LAN is `192.168.10.1/24`:
 
 > The page defaults are `192.168.8.3` / `192.168.8.1`. They are examples only and **must be changed to match your real LAN**. If the server LAN is `192.168.10.1` and a node is left at `192.168.8.3`, the node will be unreachable.
 
-### 3.5 Common static-IP mistakes
+### 4.5 Common static-IP mistakes
 
 | Mistake | Consequence | Correct approach |
 | --- | --- | --- |
@@ -160,22 +256,22 @@ Assuming the server LAN is `192.168.10.1/24`:
 | Leaving the default `192.168.8.x` | The node is unreachable | Change it to your real LAN |
 | Static address inside the DHCP pool | DHCP may hand the same address to another device | Use an address outside the pool or a static lease |
 
-### 3.6 The server also needs a fixed address
+### 4.6 The server also needs a fixed address
 
 The Server role does not show the AP Mode tab and does not change its LAN through that tab. Before enabling the mesh, set the server LAN to a static address (for example `192.168.10.1/24`) under **Network → Interfaces → LAN**, with the correct gateway and DNS. Otherwise the server address may change with upstream DHCP and the gateway configured on the nodes will become invalid.
 
-## 4. Configuring wired backhaul
+## 5. Configuring wired backhaul
 
 Wired backhaul is optional, supported by all three roles, and configured per device.
 
-### 4.1 Requirements
+### 5.1 Requirements
 
 - Both ends of the cable must be mesh devices running this plugin, and both must select their connected port under **Wired Backhaul Port**.
 - The selected port must be a **LAN bridge port**. It must not be a WAN port or a port already owned by another logical interface.
 - Do not select the management port or an ordinary LAN uplink port as the wired backhaul port: it is removed from the LAN bridge and dedicated to mesh backhaul.
 - Port names may differ between devices (for example `lan3` on one side and `lan4` on the other); what matters is that the cable connects each device's selected port.
 
-### 4.2 Steps
+### 5.2 Steps
 
 1. On device A, select the LAN port cabled to device B (for example `lan3`) under **Wired Backhaul Port**.
 2. On device B, select the LAN port cabled to device A (for example `lan4`).
@@ -184,7 +280,7 @@ Wired backhaul is optional, supported by all three roles, and configured per dev
 
 The script removes the port from `br-lan`, creates `network.mesh_wired` (`batadv_hardif`, `master=bat0`, MTU 1500), and sets a very high throughput override so BATMAN_V prefers the wired path while the cable is up.
 
-### 4.3 Automatic switching
+### 5.3 Automatic switching
 
 The wired and wireless hardifs remain configured together:
 
@@ -194,7 +290,7 @@ The wired and wireless hardifs remain configured together:
 
 BATMAN_V link detection performs the switch without manual action. This requires **both ends to have selected their port in advance**. The script does not detect an arbitrary LAN cable plugged into an unselected port.
 
-### 4.4 Notes
+### 5.4 Notes
 
 - If only one end selects a wired backhaul port while the other still uses that port as an ordinary LAN port, no mesh wired backhaul is formed, and the device that selected the port loses its ordinary LAN function on that port.
 - A dedicated wired backhaul port no longer carries ordinary LAN traffic. If you only need a normal wired uplink, keep **Wired Backhaul Port** at **None** and use the port as a normal LAN port.
@@ -202,7 +298,7 @@ BATMAN_V link detection performs the switch without manual action. This requires
 - The script does not handle `bridge-vlan` (VLAN filtering) configurations. On VLAN-filtered devices, verify port membership manually before enabling wired backhaul.
 - When you change the port or disable the mesh, the script returns the old port to the LAN bridge.
 
-## 5. Dumb AP mode
+## 6. Dumb AP mode
 
 **Enable Dumb AP Mode** attaches a node to an existing network whose DHCP server is another router, so it acts only as a wireless access point.
 
@@ -230,9 +326,9 @@ The current configuration is moved to `/etc/config/*.dumbap` for reference, the 
 
 > Dumb AP mode is destructive: it changes the management address, removes WAN and changes the firewall. Back up first and make sure you have physical access to the device.
 
-## 6. Verification and troubleshooting
+## 7. Verification and troubleshooting
 
-### 6.1 Page status
+### 7.1 Page status
 
 After applying, refresh the page. **Mesh Status** at the top shows:
 
@@ -241,7 +337,7 @@ After applying, refresh the page. **Mesh Status** at the top shows:
 
 If it shows **Unable to read mesh status**, `batctl` is missing or failing; this is not the same as zero neighbours.
 
-### 6.2 Useful checks
+### 7.2 Useful checks
 
 Over SSH:
 
@@ -263,7 +359,7 @@ cat /tmp/meshassistant.log
 logread | tail -50
 ```
 
-### 6.3 Common problems
+### 7.3 Common problems
 
 | Symptom | Likely cause | What to do |
 | --- | --- | --- |
@@ -275,7 +371,7 @@ logread | tail -50
 | Address changed after disabling the mesh | The script restored the pre-enable LAN address; this is expected | Reconnect at the original address |
 | Firewall/DHCP services disappeared on a node | Nodes disable `firewall`, `dnsmasq` and `odhcpd`; this is normal | Disabling the mesh or switching back to Server restores them |
 
-### 6.4 Reading the log
+### 7.4 Reading the log
 
 `/tmp/meshassistant.log` records:
 
@@ -286,7 +382,7 @@ logread | tail -50
 
 Start troubleshooting there, then combine it with `batctl n` and `logread`.
 
-## 7. Mesh examples
+## 8. Mesh examples
 
 The examples assume W1700K or similar dual-band routers, with `radio0` (5GHz/6GHz) for mesh backhaul and `radio1` for the regular AP. Use the radio names shown in the page's drop-down lists on your own devices.
 
@@ -394,7 +490,7 @@ Good for a duplex, two floors, or a long apartment: the server and one node use 
 
 ### Example 3: An existing main router already provides DHCP (DHCP reuse)
 
-Good when a main router already handles PPPoE and DHCP, and you add 2–3 mesh devices to extend coverage. This example uses three mesh devices: A as Server, B and C as Nodes; the main router does not run this plugin.
+Good when a main router already handles PPPoE and DHCP, and you add 2–3 mesh devices to extend coverage. This example uses three mesh devices: A as Server, B and C as Nodes; the main router does not run this plugin. It is mode B from [section 3](#3-server-uplink-modes-and-per-role-configuration-details).
 
 ```text
 [Internet]
@@ -452,22 +548,22 @@ Set A's LAN address in advance under **Network → Interfaces → LAN**; the Ser
 - The dedicated cable between A and B is this plugin's wired backhaul: select the dedicated port on both ends and connect them directly, not through the main router.
 - There must be only one DHCP server. A's **Server Provides DHCP** must be off, or it will conflict with the main router.
 
-## 8. Disabling, rolling back and recovery
+## 9. Disabling, rolling back and recovery
 
-### 8.1 Normal shutdown
+### 9.1 Normal shutdown
 
 1. Turn off **Enable Mesh Networking**.
 2. Click **Save & Apply**, then **Reapply meshassistant Settings**.
 
 The script removes the mesh/AP interfaces, deletes `bat0` and `mesh_batman`, returns the wired backhaul port to `br-lan`, and restores the pre-enable LAN address, hostname, DHCP/RA settings and the services it disabled.
 
-### 8.2 Undo Dumb AP mode
+### 9.2 Undo Dumb AP mode
 
 ```sh
 bash /meshassistant/meshassistant.sh undumb
 ```
 
-### 8.3 Emergency recovery
+### 9.3 Emergency recovery
 
 If a misconfiguration makes LuCI unreachable:
 
