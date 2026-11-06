@@ -4,14 +4,12 @@
 		"read": {
 			"ubus": {
 				"file": [ "exec" ],
-				"luci-rpc": [ "getWirelessDevices", "getHostHints" ],
+				"luci-rpc": [ "getWirelessDevices" ],
 				"network.interface": [ "status" ],
 				"iwinfo": [ "freqlist", "countrylist" ]
 			},
 			"file": {
 				"/usr/sbin/batctl n": [ "exec" ],
-				"/usr/sbin/batctl meshif bat0 transtable_global_json": [ "exec" ],
-				"/usr/sbin/batctl meshif bat0 dat_cache_json": [ "exec" ],
 				"/meshassistant/meshassistant.sh linkinfo": [ "exec" ],
 				"/meshassistant/meshassistant.sh backup list": [ "exec" ],
 				"/tmp/meshassistant_peers": [ "read" ],

@@ -588,15 +588,12 @@ return view.extend({
 			return Promise.all([
 				network.getWifiDevices().catch(() => []),
 				fs.exec(BATCTL, [ 'n' ]).catch(() => null),
-				fs.exec(BATCTL, [ 'meshif', 'bat0', 'transtable_global_json' ]).catch(() => null),
-				fs.exec(BATCTL, [ 'meshif', 'bat0', 'dat_cache_json' ]).catch(() => null),
-				network.getHostHints().catch(() => null),
 				callLanStatus('lan').catch(() => null),
 				fs.read(PEERS_FILE).catch(() => ''),
 				fs.exec(SCRIPT, [ 'linkinfo' ]).catch(() => null),
 				fs.read(LOG_FILE).catch(() => '')
 			]);
-		}).then(([ devices, reply, ttReply, datReply, hosts, lanStatus, peers, linkReply, logText ]) => {
+		}).then(([ devices, reply, lanStatus, peers, linkReply, logText ]) => {
 			this.radios = devices.length
 				? radioOptions(devices)
 				: uci.sections('wireless', 'wifi-device').map(function(s) {
@@ -620,7 +617,7 @@ return view.extend({
 			    !this.wiredPorts.some(function(p) { return p[0] === current; }))
 				this.wiredPorts.unshift([ current, current ]);
 
-			this.status = utils.parseStatus(reply, ttReply, datReply, hosts, peers, linkReply);
+			this.status = utils.parseStatus(reply, peers, linkReply);
 			this.logText = logText || '';
 			this.lanDefaults = utils.lanDefaults(lanStatus, uci.get('network', 'lan') || {});
 

@@ -1705,7 +1705,7 @@ lan_hwaddr() {
     local mac
     mac=$(cat "/sys/class/net/$(lan_device)/address" 2>/dev/null | tr 'A-F' 'a-f')
     case "$mac" in
-        [0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;;
+        [0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;;
         *) mac='' ;;
     esac
     [ -n "$mac" ] || return 0
