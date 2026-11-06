@@ -826,7 +826,7 @@ return view.extend({
 		o.datatype = 'minlength(8)';
 		o.depends('encryption', '1');
 
-		o = s.taboption('setup', form.Button, '_btn_reapply', _('Reapply meshassistant Settings'), _('Use this button to apply/reapply meshassistant configuration after you Save & Apply.'));
+		o = s.taboption('setup', form.Button, '_btn_reapply', _('Reapply meshassistant Settings'), _('Use this button to apply/reapply meshassistant configuration after you Save & Apply. The AP Mode address is applied here; if the address or the route is not applied correctly, the previous LAN settings are restored automatically.'));
 		const renderReapply = o.render;
 		o.render = function() {
 			return renderReapply.apply(this, arguments).then(function(node) {
@@ -1044,9 +1044,22 @@ return view.extend({
 		o.default = 'dhcp';
 		o.depends('role', /^(off|client)$/);
 
+		/*
+		 * Static mode needs both an address and a netmask.  netifd reads a
+		 * missing netmask as /32, which leaves the device answering ARP but
+		 * unreachable; an empty one becomes /0.  The datatype only checks a
+		 * non-empty value, so reject an empty one here as well: CBI removes
+		 * empty options from the config, and the script must never apply a
+		 * static LAN address without a mask.
+		 */
 		o = s.taboption('apmode', form.Value, 'ipaddr', _('Static IP Address'));
 		o.default = this.lanDefaults.ipaddr;
 		o.datatype = 'ip4addr';
+		o.validate = [ function(section_id, value) {
+			if (!utils.ipv4(value))
+				return _('Enter a static IPv4 address.');
+			return true;
+		} ];
 		o.depends('ipmode', 'static');
 		o.depends('role', /^(off|client)$/);
 
@@ -1059,6 +1072,11 @@ return view.extend({
 		o = s.taboption('apmode', form.Value, 'netmask', _('IPv4 netmask'));
 		o.default = this.lanDefaults.netmask;
 		o.datatype = 'ip4addr';
+		o.validate = [ function(section_id, value) {
+			if (!utils.netmask(value))
+				return _('Enter a valid IPv4 netmask, for example 255.255.255.0.');
+			return true;
+		} ];
 		o.depends('ipmode', 'static');
 		o.depends('role', /^(off|client)$/);
 

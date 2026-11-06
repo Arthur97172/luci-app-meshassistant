@@ -94,6 +94,12 @@ msgstr "启用此开关后，加入 Mesh 网络需要密码。"
 msgid "Ensure that the SSID is the same across all the servers/nodes in your mesh network."
 msgstr "确保 Mesh 网络中所有服务器/节点使用相同的 SSID。"
 
+msgid "Enter a static IPv4 address."
+msgstr "请输入静态 IPv4 地址。"
+
+msgid "Enter a valid IPv4 netmask, for example 255.255.255.0."
+msgstr "请输入有效的 IPv4 子网掩码，例如 255.255.255.0。"
+
 msgid "Failed to apply mesh settings: %s"
 msgstr "应用 Mesh 设置失败：%s"
 
@@ -301,8 +307,8 @@ msgstr "发射功率 / EIRP（dBm）。留空则保持当前发射功率。"
 msgid "Unable to read mesh status."
 msgstr "无法读取 Mesh 状态。"
 
-msgid "Use this button to apply/reapply meshassistant configuration after you Save & Apply."
-msgstr "在“保存并应用”之后，使用此按钮应用/重新应用 MESH助手配置。"
+msgid "Use this button to apply/reapply meshassistant configuration after you Save & Apply. The AP Mode address is applied here; if the address or the route is not applied correctly, the previous LAN settings are restored automatically."
+msgstr "在“保存并应用”之后，使用此按钮应用/重新应用 MESH助手配置。AP 模式的 IP 地址在此生效；如果地址或路由未能正确应用，设备会自动恢复原来的 LAN 设置。"
 
 msgid "WARNING: THIS WILL CHANGE THE IP ADDRESS OF THIS NODE, YOU WILL LOSE ACCESS TO THIS UI"
 msgstr "警告：这将更改此节点的 IP 地址，你将无法再访问此界面。"

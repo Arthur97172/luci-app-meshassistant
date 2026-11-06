@@ -58,6 +58,42 @@ return baseclass.extend({
 		].join('.');
 	},
 
+	// Canonical dotted form of an IPv4 netmask, or an empty string when the
+	// value is not a contiguous mask.  0.0.0.0 is rejected as well: a /0 LAN
+	// would route the whole IPv4 space onto the bridge.  netifd reads a
+	// missing netmask as /32 and an empty one as /0, so the AP Mode form must
+	// never store a value that is not a real mask.
+	netmask(value) {
+		const parts = clean(value).split('.');
+
+		if (parts.length !== 4)
+			return '';
+
+		const octets = [];
+
+		for (const part of parts) {
+			if (!/^(0|[1-9]\d{0,2})$/.test(part))
+				return '';
+
+			const octet = Number(part);
+
+			if (octet > 255)
+				return '';
+
+			octets.push(octet);
+		}
+
+		const mask = ((octets[0] << 24) | (octets[1] << 16) |
+			(octets[2] << 8) | octets[3]) >>> 0;
+
+		if (mask === 0)
+			return '';
+
+		const host = (~mask) >>> 0;
+
+		return (host & (host + 1)) === 0 ? octets.join('.') : '';
+	},
+
 	// Defaults for the node's static LAN settings.  They come from the LAN
 	// interface as it is currently configured: the live status of
 	// network.interface (DHCP lease or static address, route, DNS) is used

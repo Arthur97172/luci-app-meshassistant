@@ -14,6 +14,9 @@ MESHASSISTANT_LOG=/tmp/meshassistant.log
 # every detached run and by the backup actions, so trim the oldest part once
 # it grows past this many bytes.
 MESHASSISTANT_LOG_MAX=${MESHASSISTANT_LOG_MAX:-262144}
+# LAN watchdog state: the LAN options in effect before the AP Mode address was
+# applied, plus the address this run is expected to bring up.
+MESHASSISTANT_LAN_STATE=${MESHASSISTANT_LAN_STATE:-/tmp/meshassistant_lan_state}
 
 # Return immediately from LuCI RPC calls: wifi/network restarts may take
 # longer than the RPC timeout and can drop the current browser connection.
@@ -375,6 +378,211 @@ restore_hostname_state() {
     echo "Restored the original hostname."
 }
 
+# ---------------------------------------------------------------------------
+# Static LAN validation and watchdog
+#
+# netifd silently applies a missing netmask as /32 and an empty one as /0.
+# With a static address and no usable mask the device still answers ARP, but
+# it has no LAN route, so it becomes unreachable while still looking present
+# on the upstream router.  Validate the AP Mode values before writing them,
+# then verify the address and route after the network reload and restore the
+# previous LAN options when the result is broken.
+# ---------------------------------------------------------------------------
+
+valid_ipv4() {
+    local ip="$1" octet
+    case "$ip" in
+        ''|0.0.0.0|*[!0-9.]*) return 1 ;;
+    esac
+
+    local IFS='.'
+    set -- $ip
+    [ "$#" -eq 4 ] || return 1
+
+    for octet in "$@"; do
+        # Reject empty fields and leading zeros; inet_pton is just as strict.
+        case "$octet" in
+            ''|0?*) return 1 ;;
+        esac
+        [ "$octet" -le 255 ] || return 1
+    done
+
+    return 0
+}
+
+# A netmask is valid when its one bits are contiguous.  0.0.0.0 is rejected
+# as well: a /0 LAN would route the whole IPv4 space onto the bridge.
+valid_netmask() {
+    local mask="$1" a b c d bits host
+    valid_ipv4 "$mask" || return 1
+
+    local IFS='.'
+    set -- $mask
+    a=$1 b=$2 c=$3 d=$4
+
+    bits=$(( (a << 24) | (b << 16) | (c << 8) | d ))
+    [ "$bits" -ne 0 ] || return 1
+
+    # The host part must be a run of low one bits (2^n - 1).
+    host=$(( (~bits) & 0xffffffff ))
+    [ $(( host & (host + 1) )) -eq 0 ]
+}
+
+# Prefix length of a valid dotted netmask.
+netmask_prefix() {
+    local a b c d bits n=0
+
+    local IFS='.'
+    set -- $1
+    a=$1 b=$2 c=$3 d=$4
+
+    bits=$(( (a << 24) | (b << 16) | (c << 8) | d ))
+    while [ "$bits" -ne 0 ]; do
+        n=$(( n + (bits & 1) ))
+        bits=$(( bits >> 1 ))
+    done
+    printf '%s\n' "$n"
+}
+
+# Print the reason when the AP Mode static values cannot be applied.
+validate_static_lan() {
+    local ipaddr="$1" netmask="$2" gateway="$3" dns="$4" server
+
+    if [ -z "$ipaddr" ]; then
+        echo "Error: 'Static IP Address' is empty; keeping the current LAN address."
+        return 1
+    fi
+    if ! valid_ipv4 "$ipaddr"; then
+        echo "Error: 'Static IP Address' '$ipaddr' is not a valid IPv4 address; keeping the current LAN address."
+        return 1
+    fi
+    if [ -z "$netmask" ]; then
+        echo "Error: 'IPv4 netmask' is empty; netifd would apply the address as /32 and the device would become unreachable. Keeping the current LAN address."
+        return 1
+    fi
+    if ! valid_netmask "$netmask"; then
+        echo "Error: 'IPv4 netmask' '$netmask' is not a valid netmask; keeping the current LAN address."
+        return 1
+    fi
+    if [ -n "$gateway" ] && ! valid_ipv4 "$gateway"; then
+        echo "Error: 'Mesh Gateway IP Address' '$gateway' is not a valid IPv4 address; keeping the current LAN address."
+        return 1
+    fi
+    for server in $dns; do
+        if ! valid_ipv4 "$server"; then
+            echo "Error: 'DNS Server' '$server' is not a valid IPv4 address; keeping the current LAN address."
+            return 1
+        fi
+    done
+
+    return 0
+}
+
+# Snapshot the LAN options that are about to be replaced, including whether
+# each one was set at all.
+lan_state_save() {
+    local name value
+
+    : > "$MESHASSISTANT_LAN_STATE"
+    for name in proto ipaddr netmask gateway dns; do
+        if value=$(uci -q get "network.lan.$name"); then
+            printf 'lan_%s=%s\n' "$name" "$value" >> "$MESHASSISTANT_LAN_STATE"
+            printf 'lan_%s_unset=0\n' "$name" >> "$MESHASSISTANT_LAN_STATE"
+        else
+            printf 'lan_%s_unset=1\n' "$name" >> "$MESHASSISTANT_LAN_STATE"
+        fi
+    done
+}
+
+# Record the static values this run is expected to bring up.
+lan_state_expect() {
+    {
+        printf 'expect_ip=%s\n' "$1"
+        printf 'expect_netmask=%s\n' "$2"
+        printf 'expect_gateway=%s\n' "$3"
+    } >> "$MESHASSISTANT_LAN_STATE"
+}
+
+# Put the snapshotted LAN options back.  Removes the state file.
+lan_state_restore() {
+    local file="$MESHASSISTANT_LAN_STATE" name unset_flag value
+
+    [ -f "$file" ] || return 1
+
+    for name in proto ipaddr netmask gateway dns; do
+        unset_flag=$(sed -n "s/^lan_${name}_unset=//p" "$file" | head -n 1)
+        if [ "$unset_flag" = 1 ]; then
+            uci -q del "network.lan.$name"
+        else
+            value=$(sed -n "s/^lan_${name}=//p" "$file" | head -n 1)
+            uci_set_value "network.lan.$name" "$value"
+        fi
+    done
+
+    rm -f "$file"
+    return 0
+}
+
+# The address is present with the expected prefix, the LAN has a subnet route
+# using it, and a configured gateway has a default route.
+lan_static_is_up() {
+    local ipaddr="$1" prefix="$2" gateway="$3" dev routes
+
+    dev=$(lan_device)
+
+    ip -4 -o addr show dev "$dev" 2>/dev/null \
+        | grep -q " inet ${ipaddr}/${prefix} " || return 1
+
+    routes=$(ip route show dev "$dev" 2>/dev/null)
+    printf '%s\n' "$routes" | grep -q "src ${ipaddr} " || \
+        printf '%s\n' "$routes" | grep -q "src ${ipaddr}$" || return 1
+
+    if [ -n "$gateway" ]; then
+        printf '%s\n' "$routes" | grep -q "^default via ${gateway} " || return 1
+    fi
+
+    return 0
+}
+
+# Verify the result of a static LAN apply; restore the snapshot when the
+# address and route did not come up.  Called after the network reload.
+lan_watchdog_check() {
+    local file="$MESHASSISTANT_LAN_STATE" ipaddr netmask gateway prefix attempt
+
+    [ "${MESHASSISTANT_LAN_WATCHDOG:-1}" = 0 ] && { rm -f "$file"; return 0; }
+    [ -f "$file" ] || return 0
+
+    ipaddr=$(sed -n 's/^expect_ip=//p' "$file" | head -n 1)
+    netmask=$(sed -n 's/^expect_netmask=//p' "$file" | head -n 1)
+    gateway=$(sed -n 's/^expect_gateway=//p' "$file" | head -n 1)
+
+    if [ -z "$ipaddr" ] || ! valid_netmask "$netmask"; then
+        rm -f "$file"
+        return 0
+    fi
+
+    prefix=$(netmask_prefix "$netmask")
+
+    for attempt in 1 2 3 4 5; do
+        sleep "${MESHASSISTANT_LAN_WATCHDOG_DELAY:-3}"
+        if lan_static_is_up "$ipaddr" "$prefix" "$gateway"; then
+            echo "Verified the LAN address ${ipaddr}/${prefix} after applying."
+            rm -f "$file"
+            return 0
+        fi
+    done
+
+    echo "Warning: the LAN address ${ipaddr}/${prefix} did not come up; restoring the previous LAN settings."
+    if lan_state_restore; then
+        uci_commit network
+        /etc/init.d/network reload
+        echo "Restored the previous LAN settings (proto=$(uci -q get network.lan.proto), address=$(uci -q get network.lan.ipaddr))."
+    else
+        echo "Error: no LAN snapshot was available to restore."
+    fi
+    return 1
+}
+
 # Apply the AP Mode tab settings to a node.  This is also used by normal
 # enable, not only by Dumb AP mode: IP Mode / static address / gateway /
 # netmask / DNS / hostname are the node's management addressing.
@@ -392,13 +600,24 @@ apply_node_lan() {
         gateway=$(uci -q get meshassistant.config.gateway)
         dns=$(uci -q get meshassistant.config.dns)
 
-        uci set network.lan.proto='static'
-        [ -n "$ipaddr" ] && uci set "network.lan.ipaddr=$ipaddr"
-        [ -n "$netmask" ] && uci set "network.lan.netmask=$netmask"
-        [ -n "$gateway" ] && uci set "network.lan.gateway=$gateway"
-        [ -n "$dns" ] && uci_set_value network.lan.dns "$dns"
-        echo "Node LAN configured as static ${ipaddr:-<unset>}."
+        if validate_static_lan "$ipaddr" "$netmask" "$gateway" "$dns"; then
+            lan_state_save
+
+            uci set network.lan.proto='static'
+            uci_set_value network.lan.ipaddr "$ipaddr"
+            uci_set_value network.lan.netmask "$netmask"
+            [ -n "$gateway" ] && uci_set_value network.lan.gateway "$gateway"
+            [ -n "$dns" ] && uci_set_value network.lan.dns "$dns"
+
+            lan_state_expect "$ipaddr" "$netmask" "$gateway"
+            echo "Node LAN configured as static ${ipaddr}/${netmask}."
+        else
+            # Leave the LAN untouched: an incomplete static configuration
+            # would make the device unreachable.
+            rm -f "$MESHASSISTANT_LAN_STATE"
+        fi
     else
+        rm -f "$MESHASSISTANT_LAN_STATE"
         uci set network.lan.proto='dhcp'
         uci -q del network.lan.ipaddr
         uci -q del network.lan.netmask
@@ -552,6 +771,23 @@ apply_wired_backhaul() {
 
 # Dumb AP Mode Block
 set_apmode() {
+    local ipaddr netmask gateway dns
+
+    # Dumb AP mode disables the services and rewrites the LAN interface, so a
+    # bad static address would leave the device unreachable with no DHCP
+    # server.  Validate before changing anything.
+    if [ "$(uci -q get meshassistant.config.ipmode)" = "static" ]; then
+        ipaddr=$(uci -q get meshassistant.config.ipaddr)
+        netmask=$(uci -q get meshassistant.config.netmask)
+        gateway=$(uci -q get meshassistant.config.gateway)
+        dns=$(uci -q get meshassistant.config.dns)
+
+        if ! validate_static_lan "$ipaddr" "$netmask" "$gateway" "$dns"; then
+            echo "Aborting Dumb AP mode; no configuration was changed."
+            return 1
+        fi
+    fi
+
     # Backup our configs
     rm /etc/config/*.meshbak
     cp /etc/config/wireless /etc/config/wireless.meshbak
@@ -574,14 +810,19 @@ set_apmode() {
     done
 
     if [ "$(uci -q get meshassistant.config.ipmode)" == "static" ]; then
-        # Set static IP
+        # Set static IP.  The values were validated above; write them through
+        # the same helpers as apply_node_lan so an empty option is never
+        # stored (netifd would turn an empty netmask into /0).
+        lan_state_save
         uci set network.lan.proto='static'
-        uci set network.lan.ipaddr=$(uci -q get meshassistant.config.ipaddr)
-        uci set network.lan.netmask=$(uci -q get meshassistant.config.netmask)
-        uci set network.lan.gateway=$(uci -q get meshassistant.config.gateway)
-        uci set network.lan.dns=$(uci -q get meshassistant.config.dns)
+        uci_set_value network.lan.ipaddr "$ipaddr"
+        uci_set_value network.lan.netmask "$netmask"
+        [ -n "$gateway" ] && uci_set_value network.lan.gateway "$gateway"
+        [ -n "$dns" ] && uci_set_value network.lan.dns "$dns"
+        lan_state_expect "$ipaddr" "$netmask" "$gateway"
     else
         # Set LAN interface to DHCP client
+        rm -f "$MESHASSISTANT_LAN_STATE"
         uci -q del network.lan.ipaddr
         uci -q del network.lan.netmask
         uci -q del network.lan.gateway
@@ -664,11 +905,18 @@ set_apmode() {
     # Tell openwrt to reload the configs
     reload_config
     /etc/init.d/network reload
+
+    # Verify the static address and roll it back when it did not come up.
+    lan_watchdog_check
 }
 
 disable_apmode() {
     # Config Count Must Match 5
     local CONFIG_COUNT=0
+
+    # The meshbak files restore the LAN directly; drop any pending watchdog
+    # snapshot from an interrupted apply.
+    rm -f "$MESHASSISTANT_LAN_STATE"
 
     # Check our configs exist, then restore them
     [ -f /etc/config/wireless.meshbak ] && {
@@ -1367,6 +1615,11 @@ apply_mesh_config() {
     wifi reload
     log_note "Running: reload_config"
     reload_config
+
+    # The AP Mode address is applied by the network reload above.  Verify it
+    # before reporting success and roll it back when it did not come up.
+    lan_watchdog_check
+
     echo "Mesh configuration applied."
 }
 
@@ -1628,6 +1881,10 @@ clear_log() {
 
 # Enable meshassistant
 enable_meshassistant() {
+    # Drop a snapshot from an interrupted earlier run; apply_node_lan creates
+    # a fresh one only when it applies a static LAN address.
+    rm -f "$MESHASSISTANT_LAN_STATE"
+
     # This implementation supports one mesh radio.  Reject a multi-value
     # apRadio (for example from an older config) before touching network or
     # wireless config, instead of creating malformed wireless sections.
@@ -1675,6 +1932,9 @@ enable_meshassistant() {
 
 # Disable meshassistant
 disable_meshassistant() {
+    # No watchdog check follows; drop any snapshot left by an interrupted run.
+    rm -f "$MESHASSISTANT_LAN_STATE"
+
     # Clear old radios then set "old values"
     log_note "Phase: removing the mesh wireless sections"
     clear_by_mesh_id "$(uci -q get meshassistant.config.mesh_id)"
@@ -2117,7 +2377,7 @@ fi
 if [ "$1" = "dumbap" ]; then
     log_run_header "enabling Dumb AP mode"
     set_apmode
-    exit 0
+    exit $?
 elif [ "$1" = "undumb" ]; then
     log_run_header "disabling Dumb AP mode"
     disable_apmode

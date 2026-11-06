@@ -92,6 +92,12 @@ msgstr ""
 msgid "Ensure that the SSID is the same across all the servers/nodes in your mesh network."
 msgstr ""
 
+msgid "Enter a static IPv4 address."
+msgstr ""
+
+msgid "Enter a valid IPv4 netmask, for example 255.255.255.0."
+msgstr ""
+
 msgid "Failed to apply mesh settings: %s"
 msgstr ""
 
@@ -299,7 +305,7 @@ msgstr ""
 msgid "Unable to read mesh status."
 msgstr ""
 
-msgid "Use this button to apply/reapply meshassistant configuration after you Save & Apply."
+msgid "Use this button to apply/reapply meshassistant configuration after you Save & Apply. The AP Mode address is applied here; if the address or the route is not applied correctly, the previous LAN settings are restored automatically."
 msgstr ""
 
 msgid "WARNING: THIS WILL CHANGE THE IP ADDRESS OF THIS NODE, YOU WILL LOSE ACCESS TO THIS UI"
