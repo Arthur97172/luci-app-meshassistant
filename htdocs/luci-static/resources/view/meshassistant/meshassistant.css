@@ -142,10 +142,11 @@ html.dark .meshassistant-note {
 
 /*
  * A row without a description ends directly on the next row's box, which
- * leaves the plain fields of AP Mode and Advanced Settings touching.  Give
- * such a row a small gap before the next one; rows that do have a
- * description already separate themselves from the next row.
+ * leaves the plain fields of Basic Setup, AP Mode and Advanced Settings
+ * touching.  Give such a row a small gap before the next one; rows that do
+ * have a description already separate themselves from the next row.
  */
+.cbi-section-node-tabbed > .meshassistant-tab-pane[data-tab="setup"] > .cbi-value:not(:has(.cbi-value-description)) + .cbi-value,
 .cbi-section-node-tabbed > .meshassistant-tab-pane[data-tab="apmode"] > .cbi-value:not(:has(.cbi-value-description)) + .cbi-value,
 .cbi-section-node-tabbed > .meshassistant-tab-pane[data-tab="advanced"] > .cbi-value:not(:has(.cbi-value-description)) + .cbi-value {
 	margin-top: 8px;
