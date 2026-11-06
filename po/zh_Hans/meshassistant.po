@@ -76,6 +76,9 @@ msgstr "DHCP"
 msgid "DNS Server"
 msgstr "DNS 服务器"
 
+msgid "The DNS server for this node. In DHCP mode it replaces the DNS servers advertised by the DHCP server; leave it empty to use them."
+msgstr "本机使用的 DNS 服务器。DHCP 模式下会覆盖 DHCP 服务器下发的 DNS；留空则使用下发的 DNS。"
+
 msgid "Mesh Assistant"
 msgstr "MESH助手"
 

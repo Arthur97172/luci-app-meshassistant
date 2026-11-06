@@ -94,7 +94,10 @@ and `luci-i18n-meshassistant-zh-cn` are produced together.
    mesh SSID and password.
 3. For a Node or Client, open **AP Mode** and set the hostname and IP: use DHCP
    when a DHCP server exists on the LAN, or a static IP when there is none or
-   you need a stable management address.
+   you need a stable management address. The DNS Server field is available in
+   both modes: in DHCP mode an empty value uses the advertised DNS servers and
+   a value replaces them completely; in static mode an empty value keeps the
+   DNS server the LAN already has.
 4. For wired backhaul, select the connected LAN bridge port under **Wired
    Backhaul Port** on both ends of the cable; keep **None** for wireless-only
    backhaul.

@@ -74,6 +74,9 @@ msgstr ""
 msgid "DNS Server"
 msgstr ""
 
+msgid "The DNS server for this node. In DHCP mode it replaces the DNS servers advertised by the DHCP server; leave it empty to use them."
+msgstr ""
+
 msgid "Mesh Assistant"
 msgstr ""
 

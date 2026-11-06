@@ -94,7 +94,7 @@ Menu entry: **Network → Mesh Assistant** (Chinese: **网络 → MESH助手**).
 | Static IP Address | Node LAN address; must be in the same subnet as the server/gateway and must be unique. |
 | Mesh Gateway IP Address | Node's default gateway; normally the server's LAN address. In a DHCP-reuse topology, use the address of the actual internet router. |
 | IPv4 netmask | Match the server/main router; commonly `255.255.255.0`. |
-| DNS Server | Normally the server's LAN address; an upstream router or a public DNS server also works. |
+| DNS Server | Available in both IP modes. In DHCP mode, leave it empty to use the DNS servers advertised by the DHCP server; a value replaces them completely. In static mode it sets the node's DNS server; when empty, the DNS server the LAN already has is kept. |
 | Enable Dumb AP Mode | Converts the node into a dumb AP attached to an existing network. It changes the management address and asks for confirmation first. See [section 6](#6-dumb-ap-mode). |
 
 These settings are not limited to Dumb AP mode: a normal node enable also applies IP Mode and hostname. The previous LAN and hostname values are backed up and restored when the mesh is disabled.
@@ -215,6 +215,8 @@ Nodes and Clients do not provide DHCP and do not perform NAT. They disable `fire
 - **DHCP** (default): the script sets the node LAN to a DHCP client. The node must be able to reach a DHCP server on the mesh LAN, normally:
   - a Server role with **Server Provides DHCP** enabled; or
   - another router already on the LAN.
+
+  In DHCP mode the gateway is chosen by the server and cannot be set separately. **DNS Server** is optional: empty keeps the advertised DNS servers, a value replaces them completely (the script sets `list dns` and `peerdns=0`).
 - **Static**: the script sets the node LAN to a static address using the address, netmask, gateway and DNS you enter.
 
 ### 4.2 When to use a static IP

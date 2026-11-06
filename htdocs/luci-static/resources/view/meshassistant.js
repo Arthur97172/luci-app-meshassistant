@@ -1125,12 +1125,20 @@ return view.extend({
 		} ];
 		o.depends({ role: /^(off|client)$/, ipmode: 'static' });
 
-		o = s.taboption('apmode', form.Value, 'dns', _('DNS Server'));
-		o.default = this.lanDefaults.dns;
+		o = s.taboption('apmode', form.Value, 'dns', _('DNS Server'),
+			_('The DNS server for this node. In DHCP mode it replaces the DNS servers advertised by the DHCP server; leave it empty to use them.'));
+		/*
+		 * Keep the default empty so the field can be cleared again: a filled
+		 * default with rmempty=false cannot be emptied in LuCI.  The current
+		 * server is shown as a placeholder; without an explicit value the
+		 * script leaves the DHCP DNS servers in use and, in static mode,
+		 * keeps the DNS server the LAN already has.
+		 */
+		o.default = '';
+		o.placeholder = this.lanDefaults.dns;
 		o.datatype = 'ip4addr';
-		/* Same rule as the gateway: keep a detected value, allow an empty one. */
-		o.rmempty = !o.default;
-		o.depends({ role: /^(off|client)$/, ipmode: 'static' });
+		o.rmempty = true;
+		o.depends('role', /^(off|client)$/);
 
 		o = s.taboption('apmode', form.Button, '_btn_apmode', _('Enable Dumb AP Mode'), _('WARNING: THIS WILL CHANGE THE IP ADDRESS OF THIS NODE, YOU WILL LOSE ACCESS TO THIS UI'));
 		o.onclick = ui.createHandlerFn(this, function() {

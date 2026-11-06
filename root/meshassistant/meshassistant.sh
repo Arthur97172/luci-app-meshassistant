@@ -349,6 +349,7 @@ save_node_lan_state() {
     uci_backup_save meshassistant.config network.lan.netmask lan_backup_netmask
     uci_backup_save meshassistant.config network.lan.gateway lan_backup_gateway
     uci_backup_save meshassistant.config network.lan.dns lan_backup_dns
+    uci_backup_save meshassistant.config network.lan.peerdns lan_backup_peerdns
     uci set meshassistant.config.lan_state_saved=1
 }
 
@@ -359,6 +360,7 @@ restore_node_lan_state() {
     uci_backup_restore meshassistant.config network.lan.netmask lan_backup_netmask
     uci_backup_restore meshassistant.config network.lan.gateway lan_backup_gateway
     uci_backup_restore meshassistant.config network.lan.dns lan_backup_dns
+    uci_backup_restore meshassistant.config network.lan.peerdns lan_backup_peerdns
     uci -q del meshassistant.config.lan_state_saved
     uci_commit network
     echo "Restored the original LAN address."
@@ -484,7 +486,7 @@ lan_state_save() {
     local name value
 
     : > "$MESHASSISTANT_LAN_STATE"
-    for name in proto ipaddr netmask gateway dns; do
+    for name in proto ipaddr netmask gateway dns peerdns; do
         if value=$(uci -q get "network.lan.$name"); then
             printf 'lan_%s=%s\n' "$name" "$value" >> "$MESHASSISTANT_LAN_STATE"
             printf 'lan_%s_unset=0\n' "$name" >> "$MESHASSISTANT_LAN_STATE"
@@ -509,8 +511,10 @@ lan_state_restore() {
 
     [ -f "$file" ] || return 1
 
-    for name in proto ipaddr netmask gateway dns; do
+    for name in proto ipaddr netmask gateway dns peerdns; do
         unset_flag=$(sed -n "s/^lan_${name}_unset=//p" "$file" | head -n 1)
+        # State files written by older versions have no peerdns entry.
+        [ -z "$unset_flag" ] && continue
         if [ "$unset_flag" = 1 ]; then
             uci -q del "network.lan.$name"
         else
@@ -521,6 +525,29 @@ lan_state_restore() {
 
     rm -f "$file"
     return 0
+}
+
+# Apply the AP Mode DNS setting to a DHCP client LAN interface.  A non-empty
+# value replaces the DNS servers advertised by the DHCP server; an empty one
+# leaves them in use.
+apply_dhcp_lan_dns() {
+    local dns="$1" server
+
+    uci -q del network.lan.dns
+    uci -q del network.lan.peerdns
+    [ -z "$dns" ] && return 0
+
+    for server in $dns; do
+        if ! valid_ipv4 "$server"; then
+            echo "Error: 'DNS Server' '$server' is not a valid IPv4 address; using the DHCP DNS servers instead."
+            return 1
+        fi
+    done
+
+    for server in $dns; do
+        uci add_list network.lan.dns="$server"
+    done
+    uci set network.lan.peerdns='0'
 }
 
 # The address is present with the expected prefix, the LAN has a subnet route
@@ -591,6 +618,7 @@ apply_node_lan() {
 
     ipmode=$(uci -q get meshassistant.config.ipmode)
     hostname=$(uci -q get meshassistant.config.hostname)
+    dns=$(uci -q get meshassistant.config.dns)
 
     save_node_lan_state
 
@@ -598,7 +626,6 @@ apply_node_lan() {
         ipaddr=$(uci -q get meshassistant.config.ipaddr)
         netmask=$(uci -q get meshassistant.config.netmask)
         gateway=$(uci -q get meshassistant.config.gateway)
-        dns=$(uci -q get meshassistant.config.dns)
 
         if validate_static_lan "$ipaddr" "$netmask" "$gateway" "$dns"; then
             lan_state_save
@@ -608,6 +635,7 @@ apply_node_lan() {
             uci_set_value network.lan.netmask "$netmask"
             [ -n "$gateway" ] && uci_set_value network.lan.gateway "$gateway"
             [ -n "$dns" ] && uci_set_value network.lan.dns "$dns"
+            uci -q del network.lan.peerdns
 
             lan_state_expect "$ipaddr" "$netmask" "$gateway"
             echo "Node LAN configured as static ${ipaddr}/${netmask}."
@@ -622,7 +650,7 @@ apply_node_lan() {
         uci -q del network.lan.ipaddr
         uci -q del network.lan.netmask
         uci -q del network.lan.gateway
-        uci -q del network.lan.dns
+        apply_dhcp_lan_dns "$dns"
         echo "Node LAN configured as a DHCP client."
     fi
 
@@ -819,14 +847,16 @@ set_apmode() {
         uci_set_value network.lan.netmask "$netmask"
         [ -n "$gateway" ] && uci_set_value network.lan.gateway "$gateway"
         [ -n "$dns" ] && uci_set_value network.lan.dns "$dns"
+        uci -q del network.lan.peerdns
         lan_state_expect "$ipaddr" "$netmask" "$gateway"
     else
         # Set LAN interface to DHCP client
         rm -f "$MESHASSISTANT_LAN_STATE"
+        dns=$(uci -q get meshassistant.config.dns)
         uci -q del network.lan.ipaddr
         uci -q del network.lan.netmask
         uci -q del network.lan.gateway
-        uci -q del network.lan.dns
+        apply_dhcp_lan_dns "$dns"
         uci set network.lan.proto='dhcp'
     fi
 
