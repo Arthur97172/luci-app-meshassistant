@@ -129,15 +129,26 @@ html.dark .meshassistant-note {
 }
 
 /*
- * The theme puts one field gap between the children of a tabbed pane.  Here
- * the children are the sub-tab menu and the pages, and that gap plus the
- * margins of the radio heading left too much empty space between the tabs
- * and the first heading.  The page wrapper's own margin is enough; the rule
- * only applies once the custom menu exists, so a single-radio device keeps
- * the theme's row spacing.
+ * The four form pages are flex columns and the theme puts one field gap
+ * between their children.  The radio pages of Spectrum Settings stack their
+ * rows in a plain block, which gives a tighter, even rhythm between a row,
+ * its description and the next row; use that rhythm on every form page.
+ * The gap below the spectrum sub-tab menu comes from the wrapper's own
+ * margin, so removing the flex gap does not affect it.
  */
-.cbi-section-node-tabbed > .meshassistant-tab-pane[data-tab="spectrum"]:has(> .meshassistant-spectrum-tabmenu) {
+.cbi-section-node-tabbed > .meshassistant-tab-pane {
 	gap: 0;
+}
+
+/*
+ * A row without a description ends directly on the next row's box, which
+ * leaves the plain fields of AP Mode and Advanced Settings touching.  Give
+ * such a row a small gap before the next one; rows that do have a
+ * description already separate themselves from the next row.
+ */
+.cbi-section-node-tabbed > .meshassistant-tab-pane[data-tab="apmode"] > .cbi-value:not(:has(.cbi-value-description)) + .cbi-value,
+.cbi-section-node-tabbed > .meshassistant-tab-pane[data-tab="advanced"] > .cbi-value:not(:has(.cbi-value-description)) + .cbi-value {
+	margin-top: 8px;
 }
 
 /*
