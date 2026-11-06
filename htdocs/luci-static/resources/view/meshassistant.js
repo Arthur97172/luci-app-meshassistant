@@ -1639,6 +1639,22 @@ return view.extend({
 
 			ui.tabs.initTabGroup(tabsEl.childNodes);
 
+			/*
+			 * Argon draws the theme's own page tab bar, the one a page with
+			 * sibling menu entries gets, as a rounded panel that separates the
+			 * tabs from the page; the theme selects that bar through its
+			 * "tabs" class.  The menu built by initTabGroup only has
+			 * "cbi-tabmenu", which the theme leaves as free-standing pills.
+			 * Give the menu both classes so the in-page tabs sit in the same
+			 * panel.  Themes that style the two classes alike, like
+			 * Bootstrap, are unaffected.
+			 */
+			const tabMenu = tabsEl.previousElementSibling;
+
+			if (tabMenu != null && tabMenu.classList != null &&
+			    tabMenu.classList.contains('cbi-tabmenu'))
+				tabMenu.classList.add('tabs');
+
 			return pageEl;
 		});
 	}
