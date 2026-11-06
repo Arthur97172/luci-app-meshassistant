@@ -20,6 +20,14 @@ const LOG_FILE = '/tmp/meshassistant.log';
 const BACKUP_DIR = '/etc/meshassistant/backup';
 const BACKUP_SELECTION = '/tmp/meshassistant_backup_selection';
 
+/*
+ * How often the Mesh Status tab refreshes itself while it is the active tab.
+ * The peer announcements are written every 10 seconds, so refreshing at the
+ * same rate keeps the table current without reading batctl, the peer file and
+ * the wireless stations more often than the underlying data changes.
+ */
+const STATUS_REFRESH_INTERVAL = 10000;
+
 const callLanStatus = rpc.declare({
 	object: 'network.interface',
 	method: 'status',
@@ -455,6 +463,21 @@ function renderStatus(status) {
 	}
 
 	return E('div', { 'class': 'cbi-section' }, children);
+}
+
+/*
+ * Read only what the Mesh Status table displays.  The periodic refresh uses
+ * this instead of load(), which would also read UCI, the radio list and the
+ * run log and could disturb the form the user is filling in.
+ */
+function readMeshStatus() {
+	return Promise.all([
+		fs.exec(BATCTL, [ 'n' ]).catch(() => null),
+		fs.read(PEERS_FILE).catch(() => ''),
+		fs.exec(SCRIPT, [ 'linkinfo' ]).catch(() => null)
+	]).then(function([ reply, peers, linkReply ]) {
+		return utils.parseStatus(reply, peers, linkReply);
+	});
 }
 
 /*
@@ -1208,6 +1231,75 @@ return view.extend({
 				'data-tab': 'status',
 				'data-tab-title': _('Mesh Status')
 			}, [ statusEl ]);
+
+			/*
+			 * Refresh the Mesh Status tab in place.  Only the status data is
+			 * read again, and only while the tab is active and the browser tab
+			 * is visible.  The tab menu and the form are left untouched.
+			 */
+			let statusTimer = null;
+			let statusBusy = false;
+
+			const refreshStatus = () => {
+				if (statusPane.isConnected === false) {
+					if (statusTimer != null) {
+						clearInterval(statusTimer);
+						statusTimer = null;
+					}
+
+					return Promise.resolve();
+				}
+
+				if (statusBusy ||
+				    document.visibilityState === 'hidden' ||
+				    statusPane.getAttribute('data-tab-active') !== 'true')
+					return Promise.resolve();
+
+				statusBusy = true;
+
+				return readMeshStatus().then((next) => {
+					/*
+					 * A single failed read must not replace a good snapshot
+					 * with the error message.
+					 */
+					if (!next.ok && this.status && this.status.ok)
+						return;
+
+					this.status = next;
+
+					const replacement = renderStatus(this.status);
+
+					while (statusPane.childNodes.length)
+						statusPane.removeChild(statusPane.childNodes[0]);
+
+					statusPane.appendChild(replacement);
+				}).catch(() => {
+					/* Keep showing the last good snapshot. */
+				}).then(() => {
+					statusBusy = false;
+				});
+			};
+
+			/*
+			 * Switching back to the tab refreshes immediately instead of
+			 * waiting for the next tick.
+			 */
+			statusTimer = setInterval(refreshStatus, STATUS_REFRESH_INTERVAL);
+			statusPane.addEventListener('cbi-tab-active', refreshStatus);
+
+			if (document.addEventListener)
+				document.addEventListener('visibilitychange', function() {
+					if (document.visibilityState !== 'hidden')
+						refreshStatus();
+				});
+
+			if (typeof window !== 'undefined' && window.addEventListener)
+				window.addEventListener('pagehide', function() {
+					if (statusTimer != null) {
+						clearInterval(statusTimer);
+						statusTimer = null;
+					}
+				});
 
 			const backupListEl = E('div', {
 				'class': 'cbi-section-descr',

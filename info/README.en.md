@@ -343,6 +343,8 @@ After applying, refresh the page. **Mesh Status** at the top shows:
 - the number of active nodes;
 - neighbour nodes, interface, the IP addresses of each neighbour and its clients, and last-seen time.
 
+While the **Mesh Status** tab is open it refreshes every 10 seconds; it pauses when the browser tab is in the background or another tab is selected, and refreshes immediately when switched back. The refresh only re-reads `batctl n`, the peer announcements and the wireless state, so it does not touch a form being edited.
+
 If it shows **Unable to read mesh status**, `batctl` is missing or failing; this is not the same as zero neighbours.
 
 ### 7.2 Useful checks
