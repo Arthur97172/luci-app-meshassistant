@@ -1804,6 +1804,32 @@ announce_identity() {
     done
 }
 
+# Announcement file locking.
+#
+# socat starts one "peer" process per datagram and the daemon prunes the file
+# while those processes append to it, so several processes write
+# "$MESHASSISTANT_PEERS" at the same time.  Every write takes the same lock on
+# fd 9, which the kernel releases when the writer closes the descriptor:
+#
+#   peer_append   one complete line, one printf, lock held
+#   prune_peers   the whole awk + rename rewrite, lock held
+#   daemon start  emptying the file, lock held
+#
+# With the rewrite excluded from the append window no announcement can land in
+# a renamed-away inode, and with two appends excluded from each other no two
+# lines can interleave.  flock comes from util-linux; when it is missing the
+# writes still happen, only unserialized.
+lock_peers() {
+    flock -x 9 2>/dev/null || :
+}
+
+peer_append() {
+    {
+        lock_peers
+        printf '%s' "$1"$'\n' >>"$MESHASSISTANT_PEERS"
+    } 9>>"$MESHASSISTANT_PEERS.lock"
+}
+
 # Called by socat for every received datagram; the datagram is on stdin.  A
 # datagram may carry several lines: the version 3 announcement follows the
 # version 2 line so that receivers which read only the first line still work.
@@ -1871,27 +1897,34 @@ record_peer() {
 
         ts=$(date +%s)
         if [ "$proto" = 'meshassistant/3' ]; then
-            printf '%s %s %s %s %s %s\n' "$ts" "$mac" "${ip:--}" "$hostname" \
-                "${load:--}" "$lanmac" >> "$MESHASSISTANT_PEERS"
+            peer_append "$ts $mac ${ip:--} $hostname ${load:--} $lanmac"
         else
-            printf '%s %s %s %s %s\n' "$ts" "$mac" "${ip:--}" "$hostname" \
-                "${load:--}" >> "$MESHASSISTANT_PEERS"
+            peer_append "$ts $mac ${ip:--} $hostname ${load:--}"
         fi
     done
 }
 
-# Drop announcements that were not refreshed within the maximum age.
+# Drop announcements that were not refreshed within the maximum age.  The
+# rewrite replaces the file, so it holds the peer lock: a line appended between
+# awk reading the file and the rename would otherwise vanish with the old inode.
 prune_peers() {
     local now tmp
     [ -f "$MESHASSISTANT_PEERS" ] || return 0
     now=$(date +%s)
     tmp="$MESHASSISTANT_PEERS.$$"
-    if awk -v now="$now" -v max="$MESHASSISTANT_PEER_MAX_AGE" \
-            '($1 + 0) >= now - max' "$MESHASSISTANT_PEERS" >"$tmp" 2>/dev/null; then
-        mv "$tmp" "$MESHASSISTANT_PEERS"
-    else
-        rm -f "$tmp"
-    fi
+    {
+        lock_peers
+        # Stored timestamps are the receiver's own clock, so a value after
+        # "now" can only come from a damaged line; without the upper bound
+        # such a line would count as fresh forever.
+        if awk -v now="$now" -v max="$MESHASSISTANT_PEER_MAX_AGE" \
+                '($1 + 0) >= now - max && ($1 + 0) <= now' \
+                "$MESHASSISTANT_PEERS" >"$tmp" 2>/dev/null; then
+            mv "$tmp" "$MESHASSISTANT_PEERS"
+        else
+            rm -f "$tmp"
+        fi
+    } 9>>"$MESHASSISTANT_PEERS.lock"
 }
 
 daemon_meshassistant() {
@@ -1902,7 +1935,10 @@ daemon_meshassistant() {
         exit 0
     fi
 
-    : > "$MESHASSISTANT_PEERS"
+    {
+        lock_peers
+        : > "$MESHASSISTANT_PEERS"
+    } 9>>"$MESHASSISTANT_PEERS.lock"
     socat -u "UDP-RECVFROM:$MESHASSISTANT_PORT,reuseaddr,fork" \
         "EXEC:/meshassistant/meshassistant.sh peer" >/dev/null 2>&1 &
     listener=$!
