@@ -844,8 +844,10 @@ set_apmode() {
 
     # Fix this for proper variable name
     HOSTNAME=$(uci -q get meshassistant.config.hostname)
-    # Set netmask and gateway (assuming $netmask and $dns didn't break more stuff)
-    uci set system.@system[0].hostname=$HOSTNAME
+    # An absent hostname means "keep the current one".  Writing it
+    # unconditionally would replace the system hostname with an empty string
+    # on configs saved before the AP Mode defaults were written to UCI.
+    [ -n "$HOSTNAME" ] && uci set system.@system[0].hostname="$HOSTNAME"
 
     # Add the wan port to the actual LAN bridge (Dumb AP mode turns the WAN
     # port into a LAN port on purpose).
@@ -1200,6 +1202,8 @@ create_batman_network() {
 }
 
 process_radios() {
+    local rc=0
+
     # Get the radio to be used for mesh from the config
     AP_RADIO=$(uci -q get meshassistant.config.apRadio)
 
@@ -1216,8 +1220,10 @@ process_radios() {
     # Loop through the selected radios
     for CURRENT_RADIO in $AP_RADIO; do
         echo "Setting up mesh networks for: $CURRENT_RADIO"
-        setup_mesh_radio "$CURRENT_RADIO"
+        setup_mesh_radio "$CURRENT_RADIO" || rc=1
     done
+
+    return "$rc"
 }
 
 # Write the settings shared by every regular WiFi AP.  $1 is the UCI section
@@ -1532,11 +1538,11 @@ setup_mesh_radio() {
 
     if [ -z "$MESH_ID" ]; then
         echo "Error: Mesh SSID is empty. Cannot configure mesh."
-        return
+        return 1
     fi
     if [ -z "$CURRENT_RADIO" ]; then
         echo "Error: Mesh radio is empty. Cannot configure mesh."
-        return
+        return 1
     fi
 
     # Generate Mesh AP SSID by appending '-mesh'
@@ -1586,6 +1592,14 @@ setup_mesh_radio() {
 # "Device: nonexistent" until the radios come back.
 apply_mesh_config() {
     local radio radios
+
+    # A mesh without a Mesh SSID has no wireless device for mesh_batman to
+    # bind to; keep the network on its current state and report the failure
+    # instead of printing "Mesh configuration applied.".
+    if [ -z "$(uci -q get meshassistant.config.mesh_id)" ]; then
+        echo "Error: Mesh SSID is empty. Cannot apply the mesh configuration."
+        return 1
+    fi
 
     AP_RADIO=$(uci -q get meshassistant.config.apRadio)
 
@@ -1895,6 +1909,15 @@ enable_meshassistant() {
         exit 1
     fi
 
+    # The Mesh SSID names the 802.11s network.  Without it setup_mesh_radio()
+    # cannot create the wireless device, but network.mesh_batman would still be
+    # written: netifd then reports NO_DEVICE and LuCI shows "Device:
+    # nonexistent".  Refuse before changing any configuration.
+    if [ -z "$(uci -q get meshassistant.config.mesh_id)" ]; then
+        echo "Error: Mesh SSID is empty. Set 'Mesh Network SSID' and apply again."
+        exit 1
+    fi
+
     # Clear stale wireless sections, but keep the section of the selected
     # radio so its wireless device never disappears.  process_radios()
     # rewrites all of its options in place.
@@ -1910,10 +1933,16 @@ enable_meshassistant() {
     apply_spectrum_settings
 
     log_note "Phase: configuring the mesh and regular AP radios"
-    process_radios
+    if ! process_radios; then
+        echo "Error: the mesh wireless configuration failed; aborting."
+        exit 1
+    fi
 
     log_note "Phase: applying network, firewall and WiFi settings"
-    apply_mesh_config
+    if ! apply_mesh_config; then
+        echo "Error: applying the mesh configuration failed; aborting."
+        exit 1
+    fi
 
     # Set at end to be sure it worked
     uci set meshassistant.config.running=1

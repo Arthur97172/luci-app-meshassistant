@@ -94,6 +94,9 @@ msgstr "启用此开关后，加入 Mesh 网络需要密码。"
 msgid "Ensure that the SSID is the same across all the servers/nodes in your mesh network."
 msgstr "确保 Mesh 网络中所有服务器/节点使用相同的 SSID。"
 
+msgid "Enter a mesh network SSID."
+msgstr "请输入 Mesh 网络 SSID。"
+
 msgid "Enter a static IPv4 address."
 msgstr "请输入静态 IPv4 地址。"
 

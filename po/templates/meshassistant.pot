@@ -92,6 +92,9 @@ msgstr ""
 msgid "Ensure that the SSID is the same across all the servers/nodes in your mesh network."
 msgstr ""
 
+msgid "Enter a mesh network SSID."
+msgstr ""
+
 msgid "Enter a static IPv4 address."
 msgstr ""
 

@@ -807,6 +807,12 @@ return view.extend({
 		for (const [ value, label ] of this.radios)
 			o.value(value, label);
 		o.default = 'radio0';
+		/*
+		 * LuCI drops options whose value equals the form default, so the
+		 * default Mesh radio would never reach UCI and the script would abort
+		 * with "No radio specified in the config".  Keep writing it.
+		 */
+		o.rmempty = false;
 
 		o = s.taboption('setup', form.ListValue, 'wired_backhaul', _('Wired Backhaul Port'), _('Select the Ethernet port cabled to another Mesh device. The port is dedicated to wired backhaul and removed from the LAN bridge. Wired is used while the cable is connected; the Mesh radio is used when it is not. Choose None for wireless-only backhaul.'));
 		o.value('none', _('None (wireless backhaul only)'));
@@ -816,6 +822,17 @@ return view.extend({
 
 		o = s.taboption('setup', form.Value, 'mesh_id', _('Mesh Network SSID'), _('Ensure that the SSID is the same across all the servers/nodes in your mesh network.'));
 		o.default = 'meshassistant_AC';
+		/*
+		 * The script needs the Mesh SSID to build the 802.11s interface.  With
+		 * rmempty the default value would be dropped on save: mesh_batman would
+		 * then have no device to bind to and LuCI would show
+		 * "Device: nonexistent".  Write it even when it equals the default.
+		 */
+		o.rmempty = false;
+		o.validate = function(section_id, value) {
+			return String(value == null ? '' : value).trim() !== '' ||
+				_('Enter a mesh network SSID.');
+		};
 
 		o = s.taboption('setup', form.Flag, 'encryption', _('Password Protection'), _('Enable this switch to require a password to join your Mesh Network.'));
 		o.default = '0';
@@ -825,6 +842,12 @@ return view.extend({
 		o.password = true;
 		o.datatype = 'minlength(8)';
 		o.depends('encryption', '1');
+		/*
+		 * Without rmempty the default password would be dropped on save:
+		 * encryption would stay enabled while the script found an empty key
+		 * and configured the APs and the mesh without encryption.  Keep it.
+		 */
+		o.rmempty = false;
 
 		o = s.taboption('setup', form.Button, '_btn_reapply', _('Reapply meshassistant Settings'), _('Use this button to apply/reapply meshassistant configuration after you Save & Apply. The AP Mode address is applied here; if the address or the route is not applied correctly, the previous LAN settings are restored automatically.'));
 		const renderReapply = o.render;
@@ -1022,6 +1045,12 @@ return view.extend({
 		o = s.taboption('advanced', form.Value, 'mobility_domain', _('Mobility Domain'));
 		o.default = '4f57';
 		o.datatype = 'and(hexstring,rangelength(4,4))';
+		/*
+		 * Without rmempty the default would be dropped and the script would
+		 * generate a different random domain on every device, so 802.11r
+		 * roaming across the mesh would not work.  Keep it.
+		 */
+		o.rmempty = false;
 
 		o = s.taboption('advanced', form.Value, 'rssi_val', _('Good RSSI Threshold'));
 		o.default = '-60';
@@ -1037,6 +1066,12 @@ return view.extend({
 			o.value('node' + i, 'node' + i);
 		o.datatype = 'string';
 		o.depends('role', /^(off|client)$/);
+		/*
+		 * Without rmempty the default hostname would be dropped on save and
+		 * the script would leave the current hostname in place instead of
+		 * applying the one shown in the form.  Keep it.
+		 */
+		o.rmempty = false;
 
 		o = s.taboption('apmode', form.ListValue, 'ipmode', _('IP Mode'), _('Choose if the node uses DHCP or a Static IP'));
 		o.value('dhcp', _('DHCP'));
@@ -1050,11 +1085,14 @@ return view.extend({
 		 * unreachable; an empty one becomes /0.  The datatype only checks a
 		 * non-empty value, so reject an empty one here as well: CBI removes
 		 * empty options from the config, and the script must never apply a
-		 * static LAN address without a mask.
+		 * static LAN address without a mask.  The fields are prefilled with
+		 * the current LAN addressing, so keep a value that equals the
+		 * default as well; otherwise Save & Apply would silently drop it.
 		 */
 		o = s.taboption('apmode', form.Value, 'ipaddr', _('Static IP Address'));
 		o.default = this.lanDefaults.ipaddr;
 		o.datatype = 'ip4addr';
+		o.rmempty = false;
 		o.validate = [ function(section_id, value) {
 			if (!utils.ipv4(value))
 				return _('Enter a static IPv4 address.');
@@ -1066,12 +1104,20 @@ return view.extend({
 		o = s.taboption('apmode', form.Value, 'gateway', _('Mesh Gateway IP Address'));
 		o.default = this.lanDefaults.gateway;
 		o.datatype = 'ip4addr';
+		/*
+		 * A detected gateway is written even when it equals the prefilled
+		 * default.  When no gateway was detected the field stays optional,
+		 * because a static LAN without a default route is valid; rmempty=false
+		 * would reject the empty value instead.
+		 */
+		o.rmempty = !o.default;
 		o.depends('ipmode', 'static');
 		o.depends('role', /^(off|client)$/);
 
 		o = s.taboption('apmode', form.Value, 'netmask', _('IPv4 netmask'));
 		o.default = this.lanDefaults.netmask;
 		o.datatype = 'ip4addr';
+		o.rmempty = false;
 		o.validate = [ function(section_id, value) {
 			if (!utils.netmask(value))
 				return _('Enter a valid IPv4 netmask, for example 255.255.255.0.');
@@ -1083,6 +1129,8 @@ return view.extend({
 		o = s.taboption('apmode', form.Value, 'dns', _('DNS Server'));
 		o.default = this.lanDefaults.dns;
 		o.datatype = 'ip4addr';
+		/* Same rule as the gateway: keep a detected value, allow an empty one. */
+		o.rmempty = !o.default;
 		o.depends('ipmode', 'static');
 		o.depends('role', /^(off|client)$/);
 
