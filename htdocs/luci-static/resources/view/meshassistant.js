@@ -1095,8 +1095,12 @@ return view.extend({
 				return _('Enter a static IPv4 address.');
 			return true;
 		} ];
-		o.depends('ipmode', 'static');
-		o.depends('role', /^(off|client)$/);
+		/*
+		 * Multiple depends() calls are OR'ed by LuCI; conditions that must
+		 * hold together belong in one object.  Static mode alone is not
+		 * enough here: the fields are only meaningful for node/client roles.
+		 */
+		o.depends({ role: /^(off|client)$/, ipmode: 'static' });
 
 		o = s.taboption('apmode', form.Value, 'gateway', _('Mesh Gateway IP Address'));
 		o.default = this.lanDefaults.gateway;
@@ -1108,8 +1112,7 @@ return view.extend({
 		 * would reject the empty value instead.
 		 */
 		o.rmempty = !o.default;
-		o.depends('ipmode', 'static');
-		o.depends('role', /^(off|client)$/);
+		o.depends({ role: /^(off|client)$/, ipmode: 'static' });
 
 		o = s.taboption('apmode', form.Value, 'netmask', _('IPv4 netmask'));
 		o.default = this.lanDefaults.netmask;
@@ -1120,16 +1123,14 @@ return view.extend({
 				return _('Enter a valid IPv4 netmask, for example 255.255.255.0.');
 			return true;
 		} ];
-		o.depends('ipmode', 'static');
-		o.depends('role', /^(off|client)$/);
+		o.depends({ role: /^(off|client)$/, ipmode: 'static' });
 
 		o = s.taboption('apmode', form.Value, 'dns', _('DNS Server'));
 		o.default = this.lanDefaults.dns;
 		o.datatype = 'ip4addr';
 		/* Same rule as the gateway: keep a detected value, allow an empty one. */
 		o.rmempty = !o.default;
-		o.depends('ipmode', 'static');
-		o.depends('role', /^(off|client)$/);
+		o.depends({ role: /^(off|client)$/, ipmode: 'static' });
 
 		o = s.taboption('apmode', form.Button, '_btn_apmode', _('Enable Dumb AP Mode'), _('WARNING: THIS WILL CHANGE THE IP ADDRESS OF THIS NODE, YOU WILL LOSE ACCESS TO THIS UI'));
 		o.onclick = ui.createHandlerFn(this, function() {
