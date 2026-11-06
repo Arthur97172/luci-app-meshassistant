@@ -1664,7 +1664,11 @@ disable_batman_interfaces() {
 # batman-adv tables alone.  Each device therefore announces its own hardif
 # MAC(s), LAN address and hostname by UDP broadcast.  The broadcast is bridged
 # onto bat0, so the nodes receive each other's announcement without knowing
-# each other's address in advance.
+# each other's address in advance.  The announcement also names the MAC of the
+# LAN bridge: after the LAN address changed, that MAC can still be mapped to
+# the abandoned address by the neighbour table, a stale DHCP lease or the DAT
+# cache, and the receiver needs to know which addresses belong to the device
+# itself.
 # ---------------------------------------------------------------------------
 
 # Ethernet device of the LAN interface, falling back to br-lan.
@@ -1692,6 +1696,20 @@ lan_ipv4() {
 lan_broadcast() {
     ip -4 -o addr show dev "$(lan_device)" 2>/dev/null \
         | awk '{ for (i = 1; i <= NF; i++) if ($i == "brd") { print $(i + 1); exit } }'
+}
+
+# MAC of the LAN bridge.  The LAN address is attached to this address in the
+# neighbour table, the DHCP leases and the DAT cache, so a receiver can use it
+# to tell the addresses of the device itself apart from its clients' ones.
+lan_hwaddr() {
+    local mac
+    mac=$(cat "/sys/class/net/$(lan_device)/address" 2>/dev/null | tr 'A-F' 'a-f')
+    case "$mac" in
+        [0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;;
+        *) mac='' ;;
+    esac
+    [ -n "$mac" ] || return 0
+    printf '%s\n' "$mac"
 }
 
 # Addresses of every batman-adv hardif.  A neighbor can be reached through the
@@ -1727,7 +1745,7 @@ local_load() {
 }
 
 announce_identity() {
-    local ip brd hostname load mac
+    local ip brd hostname load mac lanmac
     ip=$(lan_ipv4)
     [ -n "$ip" ] || return 0
 
@@ -1740,44 +1758,96 @@ announce_identity() {
     # unknown versions, so they never mistake the extra field for a hostname.
     load=$(local_load)
 
+    # Version 3 appends the LAN bridge MAC, which lets a receiver drop the
+    # addresses its own tables still associate with an abandoned LAN address.
+    # It is sent after the version 2 line in the same datagram: a receiver
+    # that only reads the first line keeps working with the older format.
+    lanmac=$(lan_hwaddr)
+
     for mac in $(mesh_hardif_macs); do
-        printf 'meshassistant/2 %s %s %s %s\n' "$mac" "$ip" "$hostname" "$load" \
-            | socat -u - "UDP-DATAGRAM:$brd:$MESHASSISTANT_PORT,broadcast" 2>/dev/null
+        {
+            printf 'meshassistant/2 %s %s %s %s\n' "$mac" "$ip" "$hostname" "$load"
+            [ -n "$lanmac" ] && \
+                printf 'meshassistant/3 %s %s %s %s %s\n' \
+                    "$mac" "$lanmac" "$ip" "$hostname" "$load"
+        } | socat -u - "UDP-DATAGRAM:$brd:$MESHASSISTANT_PORT,broadcast" 2>/dev/null
     done
 }
 
-# Called by socat for every received datagram; the datagram is on stdin.
+# Called by socat for every received datagram; the datagram is on stdin.  A
+# datagram may carry several lines: the version 3 announcement follows the
+# version 2 line so that receivers which read only the first line still work.
+# Each accepted line is stored as
+# "<epoch> <mesh MAC> <IPv4|-> <hostname> <load|-> [<LAN MAC|->]"; only a
+# version 3 line has the optional LAN MAC field.
 record_peer() {
-    local proto mac ip hostname load ts
-    read -r proto mac ip hostname load || true
-    case "$proto" in
-        meshassistant/1) load='' ;;
-        meshassistant/2) ;;
-        *) return 0 ;;
-    esac
+    local proto rest mac lanmac ip hostname load ts count
+    while read -r proto rest || [ -n "$proto" ]; do
+        mac=''
+        lanmac=''
+        ip=''
+        hostname=''
+        load=''
 
-    mac=$(printf '%s' "$mac" | tr 'A-F' 'a-f')
-    case "$mac" in
-        [0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;;
-        *) return 0 ;;
-    esac
+        # Split the datagram without pathname expansion: its content comes
+        # from the network and must not expand a glob.
+        set -f
+        set -- $rest
+        set +f
+        count=$#
 
-    [ "$ip" = "-" ] && ip=''
-    case "$ip" in
-        ''|*[!0-9.]*) ip='' ;;
-    esac
+        case "$proto" in
+            meshassistant/1)
+                [ "$count" -ge 3 ] || continue
+                mac=$1 ip=$2 hostname=$3
+                ;;
+            meshassistant/2)
+                [ "$count" -ge 4 ] || continue
+                mac=$1 ip=$2 hostname=$3 load=$4
+                ;;
+            meshassistant/3)
+                [ "$count" -ge 5 ] || continue
+                mac=$1 lanmac=$2 ip=$3 hostname=$4 load=$5
+                ;;
+            *) continue ;;
+        esac
 
-    hostname=$(printf '%s' "$hostname" | tr -cd 'A-Za-z0-9._-')
-    [ -n "$hostname" ] || hostname='-'
+        mac=$(printf '%s' "$mac" | tr 'A-F' 'a-f')
+        case "$mac" in
+            [0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;;
+            *) continue ;;
+        esac
 
-    load=$(printf '%s' "$load" | tr -cd '0-9.')
-    case "$load" in
-        ''|*.*.*) load='' ;;
-    esac
+        if [ "$proto" = 'meshassistant/3' ]; then
+            lanmac=$(printf '%s' "$lanmac" | tr 'A-F' 'a-f')
+            case "$lanmac" in
+                [0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;;
+                *) lanmac='-' ;;
+            esac
+        fi
 
-    ts=$(date +%s)
-    printf '%s %s %s %s %s\n' "$ts" "$mac" "${ip:--}" "$hostname" "${load:--}" \
-        >> "$MESHASSISTANT_PEERS"
+        [ "$ip" = "-" ] && ip=''
+        case "$ip" in
+            ''|*[!0-9.]*) ip='' ;;
+        esac
+
+        hostname=$(printf '%s' "$hostname" | tr -cd 'A-Za-z0-9._-')
+        [ -n "$hostname" ] || hostname='-'
+
+        load=$(printf '%s' "$load" | tr -cd '0-9.')
+        case "$load" in
+            ''|*.*.*) load='' ;;
+        esac
+
+        ts=$(date +%s)
+        if [ "$proto" = 'meshassistant/3' ]; then
+            printf '%s %s %s %s %s %s\n' "$ts" "$mac" "${ip:--}" "$hostname" \
+                "${load:--}" "$lanmac" >> "$MESHASSISTANT_PEERS"
+        else
+            printf '%s %s %s %s %s\n' "$ts" "$mac" "${ip:--}" "$hostname" \
+                "${load:--}" >> "$MESHASSISTANT_PEERS"
+        fi
+    done
 }
 
 # Drop announcements that were not refreshed within the maximum age.

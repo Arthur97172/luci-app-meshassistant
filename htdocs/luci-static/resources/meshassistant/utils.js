@@ -275,11 +275,34 @@ return baseclass.extend({
 		return map;
 	},
 
+	// Newest announcement per MAC.  A device announces every few seconds, so
+	// several lines for the same MAC can be fresh at the same time.
+	latestPeers(entries) {
+		const latest = {};
+
+		for (const entry of entries || []) {
+			const previous = latest[entry.mac];
+
+			if (!previous || entry.time >= previous.time)
+				latest[entry.mac] = entry;
+		}
+
+		return latest;
+	},
+
 	// Attach the IPv4 addresses of every neighbor to its row.  The addresses
 	// of a neighbor are the ones of its own MAC plus the ones of the client
 	// MACs that the mesh transit table reports behind that originator.
-	annotateIPs(rows, ttEntries, datEntries, hostHints) {
+	//
+	// The neighbour table, the DHCP lease files and the DAT cache can still
+	// carry an address that the device abandoned when its LAN address changed.
+	// When the device announces its current address, together with the MAC of
+	// its LAN bridge, the addresses of that MAC and of the bridge are dropped;
+	// the announced address is added afterwards by annotatePeers().  Addresses
+	// of clients behind the device are kept.
+	annotateIPs(rows, ttEntries, datEntries, hostHints, peerEntries) {
 		const ipByMac = this.hostIPs(hostHints);
+		const peers = this.latestPeers(peerEntries);
 
 		for (const entry of datEntries) {
 			if (!ipByMac[entry.mac])
@@ -298,15 +321,24 @@ return baseclass.extend({
 
 		for (const row of rows) {
 			const mac = this.macKey(row.neighbor);
+			const peer = mac ? peers[mac] : null;
+			const own = {};
 			const ips = [];
 			const addrs = [];
 
-			if (mac && ipByMac[mac])
+			if (peer && peer.ip) {
+				if (mac)
+					own[mac] = true;
+				if (peer.lanMac)
+					own[peer.lanMac] = true;
+			}
+
+			if (mac && ipByMac[mac] && !own[mac])
 				addrs.push.apply(addrs, ipByMac[mac]);
 
 			if (mac && clientsByOriginator[mac]) {
 				for (const client of clientsByOriginator[mac]) {
-					if (ipByMac[client])
+					if (!own[client] && ipByMac[client])
 						addrs.push.apply(addrs, ipByMac[client]);
 				}
 			}
@@ -323,8 +355,9 @@ return baseclass.extend({
 	},
 
 	// Peer announcements written by the daemon.  Each line is
-	// "<epoch> <mesh MAC> <IPv4|-> <hostname> <load|->".  The load field is
-	// missing in lines written before version 2 of the announcement.  The age
+	// "<epoch> <mesh MAC> <IPv4|-> <hostname> <load|-> [<LAN MAC|->]".  The
+	// load field is missing in lines written before version 2 of the
+	// announcement and the LAN MAC in lines written before version 3.  The age
 	// is measured against the newest entry in the file, not the browser clock:
 	// a router without NTP can have a clock that is far from the browser's.
 	parsePeers(text, maxAge) {
@@ -348,11 +381,13 @@ return baseclass.extend({
 			const ip = parts[2] === '-' ? '' : this.ipv4(parts[2]);
 			const hostname = clean(parts[3]);
 			const load = /^\d+(\.\d+)?$/.test(clean(parts[4])) ? clean(parts[4]) : '';
+			const lanMac = this.macKey(parts[5]);
 
 			if (!Number.isFinite(time) || !mac || !hostname)
 				continue;
 
-			entries.push({ time: time, mac: mac, ip: ip, hostname: hostname, load: load });
+			entries.push({ time: time, mac: mac, ip: ip, hostname: hostname,
+				load: load, lanMac: lanMac });
 
 			if (latest == null || time > latest)
 				latest = time;
@@ -373,14 +408,7 @@ return baseclass.extend({
 	// announced address is the neighbor's real LAN address, so it is placed
 	// first in the IP list.
 	annotatePeers(rows, entries) {
-		const latest = {};
-
-		for (const entry of entries || []) {
-			const previous = latest[entry.mac];
-
-			if (!previous || entry.time >= previous.time)
-				latest[entry.mac] = entry;
-		}
+		const latest = this.latestPeers(entries);
 
 		for (const row of rows) {
 			const mac = this.macKey(row.neighbor);
@@ -641,12 +669,14 @@ return baseclass.extend({
 			return { ok: false, rows: [], local: null };
 
 		const rows = this.parseNeighbors(reply.stdout);
+		const peers = this.parsePeers(peerText);
 
 		this.annotateIPs(rows,
 			this.parseTranstableGlobal(ttReply),
 			this.parseDatCache(datReply),
-			hostHints);
-		this.annotatePeers(rows, this.parsePeers(peerText));
+			hostHints,
+			peers);
+		this.annotatePeers(rows, peers);
 		this.annotateLinks(rows, this.parseLinkInfo(linkReply));
 
 		return {
