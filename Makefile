@@ -6,7 +6,7 @@
 #
 
 PKG_NAME:=luci-app-meshassistant
-PKG_VERSION:=2.5.4
+PKG_VERSION:=2.5.6
 PKG_RELEASE:=1
 
 PKG_LICENSE:=GPL-3.0-only

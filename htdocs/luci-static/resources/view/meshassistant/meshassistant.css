@@ -161,3 +161,192 @@ html.dark .meshassistant-note {
 .cbi-section-node-tabbed > .meshassistant-tab-pane[data-tab-active="true"] {
 	padding-block-start: var(--field-gap, 1rem);
 }
+
+/*
+ * Mesh Status table.
+ *
+ * Thirteen columns need more width than a narrow window offers.  The scroll
+ * container keeps every value on one line and lets the table scroll sideways
+ * instead of wrapping each value into a vertical strip of characters.
+ */
+.meshassistant-status-scroll {
+	overflow-x: auto;
+	-webkit-overflow-scrolling: touch;
+}
+
+.meshassistant-status-scroll .meshassistant-status-table {
+	min-width: 60rem;
+}
+
+/*
+ * The theme pads every cell for its two- or three-column tables; with
+ * thirteen columns that padding alone takes more room than the values.  Use
+ * a tighter padding on this table only.
+ */
+.meshassistant-status-scroll .meshassistant-status-table .tr > .td,
+.meshassistant-status-scroll .meshassistant-status-table .tr > .th {
+	padding: 0.55rem 0.65rem;
+}
+
+/*
+ * The backhaul batman currently uses.  "In Use" is green and "Standby" stays
+ * grey; the dot keeps the two states distinguishable without relying on the
+ * colour alone.
+ */
+.meshassistant-state {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35em;
+	white-space: nowrap;
+	font-weight: 600;
+}
+
+.meshassistant-state::before {
+	content: "";
+	width: 0.5em;
+	height: 0.5em;
+	border-radius: 50%;
+	background: currentColor;
+}
+
+.meshassistant-state-inuse {
+	color: #1c7c4a;
+}
+
+.meshassistant-state-standby {
+	color: #6b7280;
+	font-weight: normal;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root:not([data-argon-mode="light"]):not([data-darkmode="false"]) .meshassistant-state-inuse {
+		color: #58c98c;
+	}
+
+	:root:not([data-argon-mode="light"]):not([data-darkmode="false"]) .meshassistant-state-standby {
+		color: #93a3b1;
+	}
+}
+
+:root[data-argon-mode="dark"] .meshassistant-state-inuse,
+:root[data-darkmode="true"] .meshassistant-state-inuse,
+html.dark .meshassistant-state-inuse {
+	color: #58c98c;
+}
+
+:root[data-argon-mode="dark"] .meshassistant-state-standby,
+:root[data-darkmode="true"] .meshassistant-state-standby,
+html.dark .meshassistant-state-standby {
+	color: #93a3b1;
+}
+
+/*
+ * Argon replaces its table layout with a flex layout below 1152px.  Thirteen
+ * values would wrap there into an unlabelled jumble, so above the phone
+ * breakpoint keep the real table and let the scroll container handle the
+ * width.
+ */
+@media screen and (min-width: 901px) {
+	.meshassistant-status-scroll .meshassistant-status-table.table {
+		display: table;
+	}
+
+	.meshassistant-status-scroll .meshassistant-status-table.table > .tr {
+		display: table-row;
+	}
+
+	.meshassistant-status-scroll .meshassistant-status-table.table > .tr > .td,
+	.meshassistant-status-scroll .meshassistant-status-table.table > .tr > .th {
+		display: table-cell;
+	}
+}
+
+/*
+ * On a phone the table would shrink every column to a strip of vertically
+ * wrapped characters.  Turn each row into a card instead: the titles row is
+ * hidden and every cell prints its own label from data-label.  The hostname
+ * and the backhaul state share the card's first line; the remaining values
+ * flow in two columns.  Empty values are dropped, so a wired link does not
+ * print a dash for every radio field it does not have.
+ */
+@media screen and (max-width: 900px) {
+	.meshassistant-status-scroll {
+		overflow-x: visible;
+	}
+
+	.meshassistant-status-scroll .meshassistant-status-table {
+		display: block;
+		width: 100%;
+		min-width: 0;
+	}
+
+	.meshassistant-status-scroll .meshassistant-status-table.table > .tr.table-titles {
+		display: none;
+	}
+
+	.meshassistant-status-scroll .meshassistant-status-table.table > .tr {
+		display: grid;
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+		gap: 0.5rem 1rem;
+		padding: 0.7rem 0.8rem;
+		border: 1px solid var(--border-color, rgba(127, 127, 127, .25));
+		border-radius: 0.5rem;
+		background: transparent;
+	}
+
+	.meshassistant-status-scroll .meshassistant-status-table.table > .tr + .tr {
+		margin-top: 0.75rem;
+	}
+
+	.meshassistant-status-scroll .meshassistant-status-table.table > .tr > .td {
+		display: block;
+		min-width: 0;
+		padding: 0;
+		border: 0;
+		background: transparent;
+		text-align: start;
+		white-space: normal;
+		overflow-wrap: break-word;
+	}
+
+	.meshassistant-status-scroll .meshassistant-status-table.table > .tr > .td::before {
+		content: attr(data-label);
+		display: block;
+		font-size: 0.7rem;
+		font-weight: normal;
+		line-height: 1.4;
+		color: var(--muted-text, rgba(127, 127, 127, .9));
+	}
+
+	.meshassistant-status-scroll .meshassistant-status-table.table > .tr > .td.meshassistant-empty:not(.meshassistant-cell-host):not(.meshassistant-cell-state) {
+		display: none;
+	}
+
+	/*
+	 * Keep the state cell in place when the link usage is unknown, so the
+	 * hostname still sits on the card's first line.
+	 */
+	.meshassistant-status-scroll .meshassistant-status-table.table > .tr > .td.meshassistant-cell-state.meshassistant-empty {
+		visibility: hidden;
+	}
+
+	.meshassistant-status-scroll .meshassistant-status-table.table > .tr > .meshassistant-cell-host {
+		grid-column: 1;
+		grid-row: 1;
+		font-size: 1rem;
+		font-weight: 700;
+	}
+
+	.meshassistant-status-scroll .meshassistant-status-table.table > .tr > .meshassistant-cell-state {
+		grid-column: 2;
+		grid-row: 1;
+		align-self: center;
+		justify-self: end;
+		text-align: end;
+	}
+
+	.meshassistant-status-scroll .meshassistant-status-table.table > .tr > .meshassistant-cell-host::before,
+	.meshassistant-status-scroll .meshassistant-status-table.table > .tr > .meshassistant-cell-state::before {
+		content: none;
+	}
+}

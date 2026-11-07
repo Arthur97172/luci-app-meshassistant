@@ -379,10 +379,44 @@ function statusSubtitle(title) {
 	}, [ title ]);
 }
 
+function statusCell(label, value, extraClass) {
+	const text = value == null || value === '' ? '-' : String(value);
+	let cls = 'td';
+
+	if (text === '-')
+		cls += ' meshassistant-empty';
+	if (extraClass)
+		cls += ' ' + extraClass;
+
+	return E('div', { 'class': cls, 'data-label': label }, [ text ]);
+}
+
+function statusStateCell(label, state) {
+	if (state === 'inuse')
+		return E('div', { 'class': 'td meshassistant-cell-state', 'data-label': label }, [
+			E('span', { 'class': 'meshassistant-state meshassistant-state-inuse' }, [
+				_('In Use')
+			])
+		]);
+
+	if (state === 'standby')
+		return E('div', { 'class': 'td meshassistant-cell-state', 'data-label': label }, [
+			E('span', { 'class': 'meshassistant-state meshassistant-state-standby' }, [
+				_('Standby')
+			])
+		]);
+
+	return E('div', {
+		'class': 'td meshassistant-cell-state meshassistant-empty',
+		'data-label': label
+	}, [ '-' ]);
+}
+
 function statusTable(rows) {
 	const titles = [
 		_('Node Hostname'),
 		_('Backhaul'),
+		_('Backhaul Status'),
 		_('Node MAC'),
 		_('IP Address'),
 		_('Interface'),
@@ -395,7 +429,7 @@ function statusTable(rows) {
 		_('Link Rate')
 	];
 
-	const table = E('div', { 'class': 'table' }, [
+	const table = E('div', { 'class': 'table meshassistant-status-table' }, [
 		E('div', { 'class': 'tr table-titles' },
 			titles.map(function(title) {
 				return E('div', { 'class': 'th' }, [ title ]);
@@ -404,27 +438,25 @@ function statusTable(rows) {
 
 	for (const row of rows) {
 		table.appendChild(E('div', { 'class': 'tr' }, [
-			E('div', { 'class': 'td' }, [ row.hostname || '-' ]),
-			E('div', { 'class': 'td' }, [
+			statusCell(titles[0], row.hostname, 'meshassistant-cell-host'),
+			statusCell(titles[1],
 				row.backhaul === 'wired' ? _('Wired') :
-				row.backhaul === 'wlan' ? _('Wireless') : '-'
-			]),
-			E('div', { 'class': 'td' }, [ row.neighbor || '-' ]),
-			E('div', { 'class': 'td' }, [
-				row.ips && row.ips.length ? row.ips.join(', ') : '-'
-			]),
-			E('div', { 'class': 'td' }, [ row.iface || '-' ]),
-			E('div', { 'class': 'td' }, [ row.frequency || '-' ]),
-			E('div', { 'class': 'td' }, [ row.channel || '-' ]),
-			E('div', { 'class': 'td' }, [ row.width || '-' ]),
-			E('div', { 'class': 'td' }, [ row.signal || '-' ]),
-			E('div', { 'class': 'td' }, [ row.load || '-' ]),
-			E('div', { 'class': 'td' }, [ row.utilization || '-' ]),
-			E('div', { 'class': 'td' }, [ row.speed ? row.speed + ' Mbps' : '-' ])
+				row.backhaul === 'wlan' ? _('Wireless') : ''),
+			statusStateCell(titles[2], row.backhaulState),
+			statusCell(titles[3], row.neighbor),
+			statusCell(titles[4], row.ips && row.ips.length ? row.ips.join(', ') : ''),
+			statusCell(titles[5], row.iface),
+			statusCell(titles[6], row.frequency),
+			statusCell(titles[7], row.channel),
+			statusCell(titles[8], row.width),
+			statusCell(titles[9], row.signal),
+			statusCell(titles[10], row.load),
+			statusCell(titles[11], row.utilization),
+			statusCell(titles[12], row.speed ? row.speed + ' Mbps' : '')
 		]));
 	}
 
-	return table;
+	return E('div', { 'class': 'meshassistant-status-scroll' }, [ table ]);
 }
 
 function renderStatus(status) {
@@ -474,9 +506,10 @@ function readMeshStatus() {
 	return Promise.all([
 		fs.exec(BATCTL, [ 'n' ]).catch(() => null),
 		fs.read(PEERS_FILE).catch(() => ''),
-		fs.exec(SCRIPT, [ 'linkinfo' ]).catch(() => null)
-	]).then(function([ reply, peers, linkReply ]) {
-		return utils.parseStatus(reply, peers, linkReply);
+		fs.exec(SCRIPT, [ 'linkinfo' ]).catch(() => null),
+		fs.exec(BATCTL, [ 'o' ]).catch(() => null)
+	]).then(function([ reply, peers, linkReply, originatorReply ]) {
+		return utils.parseStatus(reply, peers, linkReply, originatorReply);
 	});
 }
 
@@ -614,9 +647,10 @@ return view.extend({
 				callLanStatus('lan').catch(() => null),
 				fs.read(PEERS_FILE).catch(() => ''),
 				fs.exec(SCRIPT, [ 'linkinfo' ]).catch(() => null),
-				fs.read(LOG_FILE).catch(() => '')
+				fs.read(LOG_FILE).catch(() => ''),
+				fs.exec(BATCTL, [ 'o' ]).catch(() => null)
 			]);
-		}).then(([ devices, reply, lanStatus, peers, linkReply, logText ]) => {
+		}).then(([ devices, reply, lanStatus, peers, linkReply, logText, originatorReply ]) => {
 			this.radios = devices.length
 				? radioOptions(devices)
 				: uci.sections('wireless', 'wifi-device').map(function(s) {
@@ -640,7 +674,7 @@ return view.extend({
 			    !this.wiredPorts.some(function(p) { return p[0] === current; }))
 				this.wiredPorts.unshift([ current, current ]);
 
-			this.status = utils.parseStatus(reply, peers, linkReply);
+			this.status = utils.parseStatus(reply, peers, linkReply, originatorReply);
 			this.logText = logText || '';
 			this.lanDefaults = utils.lanDefaults(lanStatus, uci.get('network', 'lan') || {});
 

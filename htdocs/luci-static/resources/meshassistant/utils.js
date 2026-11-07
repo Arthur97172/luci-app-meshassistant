@@ -447,6 +447,101 @@ return baseclass.extend({
 		return rows;
 	},
 
+	// "batctl o" originator table.  Every line names an originator, the
+	// throughput of one candidate nexthop and that nexthop's outgoing
+	// interface; the candidate batman currently uses is marked with "*":
+	//   * 00:58:28:12:81:54  0.070s ( 100000.0) 00:58:28:12:81:50 [ lan2]
+	// Only the selected candidate is kept, keyed by originator.
+	parseOriginators(stdout) {
+		const selected = {};
+		const re = /^(\*)?\s*([0-9a-f]{2}(?::[0-9a-f]{2}){5})\s+\S+\s+\(\s*([\d.]+)\s*\)\s+([0-9a-f]{2}(?::[0-9a-f]{2}){5})\s+\[\s*([^\]\s]+)\s*\]$/;
+
+		for (let line of String(stdout == null ? '' : stdout).split(/\r?\n/)) {
+			const m = re.exec(line.trim());
+
+			if (!m || !m[1])
+				continue;
+
+			const originator = this.macKey(m[2]);
+			const nexthop = this.macKey(m[4]);
+			const throughput = Number(m[3]);
+
+			if (!originator || !nexthop || !Number.isFinite(throughput))
+				continue;
+
+			selected[originator] = {
+				nexthop: nexthop,
+				iface: clean(m[5]),
+				throughput: throughput
+			};
+		}
+
+		return selected;
+	},
+
+	// Mark each row's link as the one batman currently uses ("inuse") or as
+	// a standby ("standby").  A device announces every hardif MAC under the
+	// same address, so the announced MACs of one device form a group; the
+	// group member that has a selected originator is that device's own
+	// originator.  Its selected nexthop names the link used to reach the
+	// device, while the device's other links stay up as a standby.
+	//
+	// A row whose device cannot be identified keeps the empty state and the
+	// view prints a dash.
+	annotateBackhaulState(rows, originators, entries) {
+		originators = originators || {};
+
+		const latest = this.latestPeers(entries);
+		const groupMacs = {};
+
+		for (const mac of Object.keys(latest)) {
+			const peer = latest[mac];
+			const key = peer.ip || peer.hostname;
+
+			if (!key)
+				continue;
+
+			if (!groupMacs[key])
+				groupMacs[key] = [];
+			groupMacs[key].push(mac);
+		}
+
+		const deviceState = {};
+
+		for (const key of Object.keys(groupMacs)) {
+			let best = null;
+
+			for (const mac of groupMacs[key]) {
+				const entry = originators[mac];
+
+				if (entry && (!best || entry.throughput > best.throughput))
+					best = entry;
+			}
+
+			if (best)
+				deviceState[key] = best;
+		}
+
+		for (const row of rows) {
+			const mac = this.macKey(row.neighbor);
+			const key = (row.ips && row.ips[0]) || row.hostname;
+			const state = (key && deviceState[key]) || (mac && originators[mac]) || null;
+
+			if (!state) {
+				row.backhaulState = '';
+				continue;
+			}
+
+			const iface = clean(row.iface);
+			const sameNexthop = mac === state.nexthop;
+			const sameIface = !iface || !state.iface || iface === state.iface;
+
+			row.backhaulState = sameNexthop && sameIface ? 'inuse' : 'standby';
+		}
+
+		return rows;
+	},
+
 	// The local device has no link to itself.  Its row mirrors the neighbor
 	// link with the strongest signal, so the signal and link rate columns
 	// carry the same kind of values as the remote rows.  A wired backhaul has
@@ -499,11 +594,12 @@ return baseclass.extend({
 			load: info.load || '',
 			utilization: link.busy == null ? '' : link.busy + '%',
 			speed: peer ? (peer.speed || '') : '',
-			lastSeen: peer ? (peer.lastSeen || '') : ''
+			lastSeen: peer ? (peer.lastSeen || '') : '',
+			backhaulState: ''
 		};
 	},
 
-	parseStatus(reply, peerText, linkReply) {
+	parseStatus(reply, peerText, linkReply, originatorReply) {
 		if (!reply || reply.code !== 0)
 			return { ok: false, rows: [], local: null };
 
@@ -512,6 +608,8 @@ return baseclass.extend({
 
 		this.annotatePeers(rows, peers);
 		this.annotateLinks(rows, this.parseLinkInfo(linkReply));
+		this.annotateBackhaulState(rows,
+			this.parseOriginators(originatorReply && originatorReply.stdout), peers);
 
 		return {
 			ok: true,

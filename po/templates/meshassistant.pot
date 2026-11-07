@@ -17,6 +17,9 @@ msgstr ""
 msgid "Backhaul"
 msgstr ""
 
+msgid "Backhaul Status"
+msgstr ""
+
 msgid "Bad RSSI Threshold"
 msgstr ""
 
@@ -126,6 +129,9 @@ msgid "IPv4 netmask"
 msgstr ""
 
 msgid "IP Mode"
+msgstr ""
+
+msgid "In Use"
 msgstr ""
 
 msgid "Interface"
@@ -279,6 +285,9 @@ msgid "SSID used by this radio when separate SSIDs are enabled. Leave empty to u
 msgstr ""
 
 msgid "Choose whether the selected radios share one SSID or use a separate SSID per radio. Separate SSIDs disable seamless 802.11r roaming between the radios."
+msgstr ""
+
+msgid "Standby"
 msgstr ""
 
 msgid "Static"

@@ -19,6 +19,9 @@ msgstr "自动"
 msgid "Backhaul"
 msgstr "回程类型"
 
+msgid "Backhaul Status"
+msgstr "回程状态"
+
 msgid "Bad RSSI Threshold"
 msgstr "较差 RSSI 阈值"
 
@@ -129,6 +132,9 @@ msgstr "IPv4 子网掩码"
 
 msgid "IP Mode"
 msgstr "IP 模式"
+
+msgid "In Use"
+msgstr "使用中"
 
 msgid "Interface"
 msgstr "接口"
@@ -282,6 +288,9 @@ msgstr "启用不同 SSID 时该射频使用的 SSID。留空则使用公共 SSI
 
 msgid "Choose whether the selected radios share one SSID or use a separate SSID per radio. Separate SSIDs disable seamless 802.11r roaming between the radios."
 msgstr "选择选中的射频共用一个 SSID，还是每个射频使用各自的 SSID。使用不同 SSID 时，射频之间无法通过 802.11r 无缝漫游。"
+
+msgid "Standby"
+msgstr "备用"
 
 msgid "Static"
 msgstr "静态"

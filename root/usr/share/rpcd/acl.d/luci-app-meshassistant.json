@@ -10,6 +10,7 @@
 			},
 			"file": {
 				"/usr/sbin/batctl n": [ "exec" ],
+				"/usr/sbin/batctl o": [ "exec" ],
 				"/meshassistant/meshassistant.sh linkinfo": [ "exec" ],
 				"/meshassistant/meshassistant.sh backup list": [ "exec" ],
 				"/tmp/meshassistant_peers": [ "read" ],
