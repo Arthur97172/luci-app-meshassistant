@@ -241,6 +241,22 @@ html.dark .meshassistant-state-standby {
 }
 
 /*
+ * The role badge next to the "Local Host" subtitle.  The theme's border
+ * colour keeps it readable in both light and dark themes.
+ */
+.meshassistant-role {
+	display: inline-block;
+	padding: 0 0.45em;
+	border: 1px solid var(--border-color, rgba(127, 127, 127, .4));
+	border-radius: 0.75em;
+	font-size: 0.72rem;
+	font-weight: normal;
+	line-height: 1.6;
+	letter-spacing: 0.02em;
+	vertical-align: middle;
+}
+
+/*
  * Argon replaces its table layout with a flex layout below 1152px.  Thirteen
  * values would wrap there into an unlabelled jumble, so above the phone
  * breakpoint keep the real table and let the scroll container handle the

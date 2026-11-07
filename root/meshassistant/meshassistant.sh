@@ -1973,9 +1973,14 @@ hardif_is_wireless() {
 # It also prints the identity of this device for the "Local Host" row:
 #   local <hostname> <IPv4|-> <load|->
 link_info() {
-    local ip have_iw
+    local ip have_iw role kind mac
     ip=$(lan_ipv4)
-    printf 'local %s %s %s\n' "$(local_hostname)" "${ip:--}" "$(local_load)"
+    # The status table labels this device with its effective role.  LuCI omits
+    # the option when it equals the form default, so an empty value is the
+    # same "server" default enable_meshassistant uses.
+    role=$(uci -q get meshassistant.config.role)
+    role=${role:-server}
+    printf 'local %s %s %s %s\n' "$(local_hostname)" "${ip:--}" "$(local_load)" "$role"
 
     command -v iw >/dev/null 2>&1 && have_iw=1 || have_iw=0
 
@@ -1985,11 +1990,18 @@ link_info() {
             [ -n "$iface" ] || continue
 
             # A wired backhaul has no radio settings, but its kind still lets
-            # the status table explain why those cells are empty.
+            # the status table explain why those cells are empty.  The hardif
+            # MAC identifies the local link in the status table.
             if hardif_is_wireless "$iface"; then
-                printf 'kind %s wlan\n' "$iface"
+                kind=wlan
             else
-                printf 'kind %s wired\n' "$iface"
+                kind=wired
+            fi
+            mac=$(cat "/sys/class/net/$iface/address" 2>/dev/null)
+            if [ -n "$mac" ]; then
+                printf 'kind %s %s %s\n' "$iface" "$kind" "$mac"
+            else
+                printf 'kind %s %s\n' "$iface" "$kind"
             fi
 
             [ "$have_iw" = 1 ] || continue

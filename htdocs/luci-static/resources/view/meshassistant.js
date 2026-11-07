@@ -372,11 +372,33 @@ function wiredPortOptions() {
 	return choices;
 }
 
-function statusSubtitle(title) {
+function statusSubtitle(title, badge) {
+	const text = [ title ];
+
+	if (badge) {
+		text.push(' ');
+		text.push(E('span', { 'class': 'meshassistant-role' }, [ badge ]));
+	}
+
 	return E('div', {
 		'class': 'cbi-section-descr',
 		'style': 'font-size:0.95rem;font-weight:bold'
-	}, [ title ]);
+	}, text);
+}
+
+/*
+ * The effective mesh role of this device.  An empty option is the server
+ * default, and the "off" role is the form's Node choice.
+ */
+function meshRoleLabel(role) {
+	switch (role) {
+	case 'off':
+		return _('Node');
+	case 'client':
+		return _('Client');
+	default:
+		return _('Server');
+	}
 }
 
 function statusCell(label, value, extraClass) {
@@ -489,9 +511,9 @@ function renderStatus(status) {
 		children.push(statusTable(rows));
 	}
 
-	if (status.local) {
-		children.push(statusSubtitle(_('Local Host')));
-		children.push(statusTable([ status.local ]));
+	if (status.local && status.local.length) {
+		children.push(statusSubtitle(_('Local Host'), meshRoleLabel(status.role)));
+		children.push(statusTable(status.local));
 	}
 
 	return E('div', { 'class': 'cbi-section' }, children);

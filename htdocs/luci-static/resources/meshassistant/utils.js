@@ -328,6 +328,7 @@ return baseclass.extend({
 			else if (parts[0] === 'kind' && parts.length >= 3) {
 				const iface = clean(parts[1]);
 				const kind = clean(parts[2]);
+				const mac = this.macKey(parts[3]);
 
 				if (!iface || (kind !== 'wired' && kind !== 'wlan'))
 					continue;
@@ -335,6 +336,8 @@ return baseclass.extend({
 				if (!links[iface])
 					links[iface] = {};
 				links[iface].kind = kind;
+				if (mac)
+					links[iface].mac = mac;
 			}
 		}
 
@@ -342,9 +345,10 @@ return baseclass.extend({
 	},
 
 	// "linkinfo" also prints one line identifying this device:
-	//   local <hostname> <IPv4|-> <load|->
+	//   local <hostname> <IPv4|-> <load|-> [<role>]
 	// The hostname and load are the same values the daemon announces to the
-	// other mesh devices.
+	// other mesh devices.  The role is the effective meshassistant role; it is
+	// missing in output from versions before it was added.
 	parseLocalInfo(reply) {
 		if (!reply || reply.code !== 0)
 			return null;
@@ -358,11 +362,17 @@ return baseclass.extend({
 			const hostname = clean(parts[1]);
 			const ip = this.ipv4(parts[2]);
 			const load = /^\d+(\.\d+)?$/.test(clean(parts[3])) ? clean(parts[3]) : '';
+			const role = clean(parts[4]);
 
 			if (!hostname)
 				continue;
 
-			return { hostname: hostname, ip: ip, load: load };
+			return {
+				hostname: hostname,
+				ip: ip,
+				load: load,
+				role: (role === 'server' || role === 'off' || role === 'client') ? role : ''
+			};
 		}
 
 		return null;
@@ -565,32 +575,69 @@ return baseclass.extend({
 		return best || (rows && rows.length ? rows[0] : null);
 	},
 
-	// Build the "Local Host" row: the identity of this device.  The hostname,
-	// LAN address and load come from the "linkinfo" helper; the hardif, its
-	// MAC and its medium from the "batctl n" header and "linkinfo".  Signal
-	// and link rate are not measured for the device itself, so they mirror
-	// its best neighbor link.
-	parseLocalRow(statusStdout, linkReply, rows) {
+	// Build the "Local Host" rows: one row per hardif bat0 currently uses.  The
+	// hostname, LAN address, load and role are the identity of this device and
+	// repeat on each row; the hardif, its MAC and its medium come from the
+	// "linkinfo" kind lines.  Signal and link rate are not measured for the
+	// device itself, so they mirror its best neighbor on the same hardif.
+	parseLocalRows(statusStdout, linkReply, rows, originators) {
 		const info = this.parseLocalInfo(linkReply);
 
 		if (!info)
-			return null;
+			return [];
 
 		const identity = this.parseLocalIdentity(statusStdout) || {};
 		const links = this.parseLinkInfo(linkReply);
-		const link = links[identity.iface] || {};
-		const peer = this.strongestLink(rows);
+		const ifaces = Object.keys(links).filter(function(iface) {
+			return links[iface].kind;
+		});
+
+		// Without kind lines (for example when batctl cannot list the
+		// interfaces) keep the identity row that the old single-row layout
+		// showed.
+		if (ifaces.length === 0)
+			ifaces.push(identity.iface || '');
+
+		const local = ifaces.map(function(iface) {
+			return this.buildLocalRow(info, identity, links, rows, iface);
+		}, this);
+
+		return this.annotateLocalState(local, originators);
+	},
+
+	buildLocalRow(info, identity, links, rows, iface) {
+		const link = links[iface] || {};
+		const mac = link.mac || (iface && iface === identity.iface ? identity.neighbor : '') || '';
+		const peers = (rows || []).filter(function(row) {
+			return clean(row.iface) === iface;
+		});
+		const peer = this.strongestLink(peers);
+		let signal = peer ? (peer.signal || '') : '';
+
+		// A radio can see stations that batman does not list as neighbors yet;
+		// fall back to the strongest station signal of this hardif.
+		if (!signal && link.signals) {
+			let best = null;
+
+			for (const station of Object.keys(link.signals)) {
+				if (best == null || link.signals[station] > link.signals[best])
+					best = station;
+			}
+
+			if (best != null)
+				signal = link.signals[best] + ' dBm';
+		}
 
 		return {
 			hostname: info.hostname,
-			neighbor: identity.neighbor || '',
+			neighbor: mac,
 			ips: info.ip ? [ info.ip ] : [],
-			iface: identity.iface || '',
+			iface: iface,
 			backhaul: link.kind || '',
 			frequency: link.frequency ? link.frequency + ' MHz' : '',
 			channel: link.channel ? String(link.channel) : '',
 			width: link.width ? link.width + ' MHz' : '',
-			signal: peer ? (peer.signal || '') : '',
+			signal: signal,
 			load: info.load || '',
 			utilization: link.busy == null ? '' : link.busy + '%',
 			speed: peer ? (peer.speed || '') : '',
@@ -599,22 +646,55 @@ return baseclass.extend({
 		};
 	},
 
+	// Mark the local link "inuse" when batman selects its hardif as the
+	// outgoing interface for at least one originator.  The other local hardifs
+	// are standbys.  Without any selected originator the state is unknown and
+	// the view prints a dash.
+	annotateLocalState(rows, originators) {
+		originators = originators || {};
+
+		const inUse = {};
+		let any = false;
+
+		for (const mac of Object.keys(originators)) {
+			const entry = originators[mac];
+
+			if (!entry || !entry.iface)
+				continue;
+
+			any = true;
+			inUse[clean(entry.iface)] = true;
+		}
+
+		for (const row of rows) {
+			const iface = clean(row.iface);
+
+			row.backhaulState = (!any || !iface) ? '' : (inUse[iface] ? 'inuse' : 'standby');
+		}
+
+		return rows;
+	},
+
 	parseStatus(reply, peerText, linkReply, originatorReply) {
 		if (!reply || reply.code !== 0)
-			return { ok: false, rows: [], local: null };
+			return { ok: false, rows: [], local: [], role: '' };
 
 		const rows = this.parseNeighbors(reply.stdout);
 		const peers = this.parsePeers(peerText);
+		const links = this.parseLinkInfo(linkReply);
+		const originators = this.parseOriginators(
+			originatorReply && originatorReply.stdout);
+		const info = this.parseLocalInfo(linkReply);
 
 		this.annotatePeers(rows, peers);
-		this.annotateLinks(rows, this.parseLinkInfo(linkReply));
-		this.annotateBackhaulState(rows,
-			this.parseOriginators(originatorReply && originatorReply.stdout), peers);
+		this.annotateLinks(rows, links);
+		this.annotateBackhaulState(rows, originators, peers);
 
 		return {
 			ok: true,
 			rows: rows,
-			local: this.parseLocalRow(reply.stdout, linkReply, rows)
+			local: this.parseLocalRows(reply.stdout, linkReply, rows, originators),
+			role: info ? info.role : ''
 		};
 	}
 });
