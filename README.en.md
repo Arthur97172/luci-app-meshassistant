@@ -94,10 +94,11 @@ and `luci-i18n-meshassistant-zh-cn` are produced together.
    mesh SSID and password.
 3. For a Node or Client, open **AP Mode** and set the hostname and IP: use DHCP
    when a DHCP server exists on the LAN, or a static IP when there is none or
-   you need a stable management address. The DNS Server field is available in
-   both modes: in DHCP mode an empty value uses the advertised DNS servers and
-   a value replaces them completely; in static mode an empty value keeps the
-   DNS server the LAN already has.
+   you need a stable management address. **Every device must have a unique
+   hostname**; the Mesh Status page uses it to identify devices. The DNS Server
+   field is available in both modes: in DHCP mode an empty value uses the
+   advertised DNS servers and a value replaces them completely; in static mode
+   an empty value keeps the DNS server the LAN already has.
 4. For wired backhaul, select the connected LAN bridge port under **Wired
    Backhaul Port** on both ends of the cable; keep **None** for wireless-only
    backhaul.
@@ -214,6 +215,12 @@ for details.
   WAN port (the server NATs and provides DHCP) or through a LAN port (DHCP
   reuse: the main router NATs and provides DHCP, and **Server Provides DHCP**
   must be off). See [Server uplink](#server-uplink).
+- **Unique hostnames**: every device in the mesh, the server included, must
+  have a different hostname; otherwise the status page cannot tell the devices
+  apart. The page groups a device's backhaul interfaces by the LAN bridge MAC
+  it announces and only falls back to the hostname for announcements without
+  that MAC (older devices). In that case two devices with the same name merge
+  into a single entry and the active node count comes out too low.
 - **Node / Client**: no DHCP or NAT is provided. Use a static IP in **AP Mode**
   when there is no DHCP server or you need a fixed management address. Remove
   or disable any old `wwan` STA so the node does not keep a competing default

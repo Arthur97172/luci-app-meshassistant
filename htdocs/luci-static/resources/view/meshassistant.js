@@ -488,7 +488,7 @@ function renderStatus(status) {
 	// the links.  A neighbor without an announcement has no identity to share
 	// and counts as its own device.
 	const nodes = new Set(rows.map(function(row) {
-		return (row.ips && row.ips[0]) || row.hostname || row.neighbor;
+		return utils.deviceKey(row);
 	})).size;
 
 	const children = [

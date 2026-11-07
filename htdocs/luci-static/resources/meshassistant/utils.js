@@ -31,6 +31,28 @@ return baseclass.extend({
 		return isMac(key) ? key : '';
 	},
 
+	// Key of the device an announcement or a row belongs to.  The LAN bridge
+	// MAC is the only value that is unique across the mesh and shared by every
+	// hardif of a device; its LAN address can be missing and its hostname can
+	// be equal on two devices.  Both fallbacks keep older announcements usable.
+	deviceKey(entry) {
+		if (!entry)
+			return '';
+
+		const lanMac = this.macKey(entry.lanMac);
+
+		if (lanMac)
+			return lanMac;
+
+		if (entry.ip)
+			return entry.ip;
+
+		if (entry.ips && entry.ips[0])
+			return entry.ips[0];
+
+		return clean(entry.hostname) || clean(entry.neighbor) || '';
+	},
+
 	ipv4(value) {
 		const ip = clean(value);
 
@@ -265,6 +287,7 @@ return baseclass.extend({
 			row.hostname = peer ? peer.hostname : '';
 			row.load = peer ? (peer.load || '') : '';
 			row.ips = peer && peer.ip ? [ peer.ip ] : [];
+			row.lanMac = peer ? (peer.lanMac || '') : '';
 		}
 
 		return rows;
@@ -513,7 +536,7 @@ return baseclass.extend({
 
 		for (const mac of Object.keys(latest)) {
 			const peer = latest[mac];
-			const key = peer.ip || peer.hostname;
+			const key = this.deviceKey(peer);
 
 			if (!key)
 				continue;
@@ -551,7 +574,7 @@ return baseclass.extend({
 				continue;
 			}
 
-			const key = (row.ips && row.ips[0]) || row.hostname;
+			const key = peer ? this.deviceKey(peer) : this.deviceKey(row);
 			const state = (key && deviceState[key]) || (mac && originators[mac]) || null;
 
 			if (!state) {
@@ -601,7 +624,7 @@ return baseclass.extend({
 			}
 		}
 
-		const localKey = identity ? (identity.ip || identity.hostname) : '';
+		const localKey = this.deviceKey(identity);
 		const present = {};
 
 		for (const row of rows) {
@@ -620,7 +643,7 @@ return baseclass.extend({
 		if (localKnown || localKey) {
 			for (const mac of Object.keys(latest)) {
 				const peer = latest[mac];
-				const key = peer.ip || peer.hostname;
+				const key = this.deviceKey(peer);
 
 				if (present[mac] || localMacs[mac])
 					continue;
@@ -631,6 +654,7 @@ return baseclass.extend({
 					hostname: peer.hostname,
 					neighbor: mac,
 					ips: peer.ip ? [ peer.ip ] : [],
+					lanMac: peer.lanMac || '',
 					iface: '',
 					backhaul: peer.kind || '',
 					frequency: '',
@@ -664,7 +688,7 @@ return baseclass.extend({
 		}
 
 		for (const row of rows) {
-			const key = (row.ips && row.ips[0]) || row.hostname || row.neighbor || '';
+			const key = this.deviceKey(row);
 			let group = key ? byKey[key] : null;
 
 			if (!group) {
