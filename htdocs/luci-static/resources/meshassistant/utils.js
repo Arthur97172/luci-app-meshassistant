@@ -216,12 +216,15 @@ return baseclass.extend({
 
 	// Peer announcements written by the daemon.  Each line is
 	// "<epoch> <mesh MAC> <IPv4|-> <hostname> <load|-> [<LAN MAC|->] [<state>]
-	// [<kind>]".  The load field is missing in lines written before version 2
-	// of the announcement, the LAN MAC in lines written before version 3, the
-	// hardif state in lines written before version 4 and the hardif medium in
-	// lines written before version 5.  The age is measured against the newest
-	// entry in the file, not the browser clock: a router without NTP can have
-	// a clock that is far from the browser's.
+	// [<kind>] [<speed>] [<iface>]".  The load field is missing in lines
+	// written before version 2 of the announcement, the LAN MAC in lines
+	// written before version 3, the hardif state in lines written before
+	// version 4, the hardif medium in lines written before version 5, the link
+	// speed the owning device measures on that hardif in lines written before
+	// version 6 and the hardif name in lines written before version 7.  The
+	// age is measured against the newest entry in the file, not the browser
+	// clock: a router without NTP can have a clock that is far from the
+	// browser's.
 	parsePeers(text, maxAge) {
 		const entries = [];
 		const limit = maxAge == null ? 120 : Number(maxAge);
@@ -246,12 +249,17 @@ return baseclass.extend({
 			const lanMac = this.macKey(parts[5]);
 			const state = parts[6] === 'inuse' || parts[6] === 'standby' ? parts[6] : '';
 			const kind = parts[7] === 'wlan' || parts[7] === 'wired' ? parts[7] : '';
+			const speed = /^\d+(\.\d+)?$/.test(clean(parts[8])) ? clean(parts[8]) : '';
+			const peerIface = clean(parts[9]);
+			const iface = peerIface !== '-' && /^[A-Za-z0-9_.@-]{1,15}$/.test(peerIface)
+				? peerIface : '';
 
 			if (!Number.isFinite(time) || !mac || !hostname)
 				continue;
 
 			entries.push({ time: time, mac: mac, ip: ip, hostname: hostname,
-				load: load, lanMac: lanMac, state: state, kind: kind });
+				load: load, lanMac: lanMac, state: state, kind: kind,
+				speed: speed, iface: iface });
 
 			if (latest == null || time > latest)
 				latest = time;
@@ -598,9 +606,12 @@ return baseclass.extend({
 	// while the server's own table shows it.  The announcements describe every
 	// hardif of every mesh device, so the remote table can show the same links
 	// each remote device reports for itself.  The announced rows carry the
-	// identity, medium and state of the hardif; the measured link columns
-	// (interface, frequency, signal, rate) stay empty because this device does
-	// not run a link to them.
+	// identity, medium, state and — since version 6 of the announcement — the
+	// link rate its device measures on that hardif, which is the only rate
+	// available for a link this device is not an endpoint of, and since
+	// version 7 the hardif name, which "batctl n" only reports for direct
+	// neighbors.  The other measured link columns (frequency, signal) stay
+	// empty because this device does not run a link to them.
 	//
 	// The device also receives its own announcements.  They are dropped by the
 	// MACs "linkinfo" reports for the local hardifs and, when those are not
@@ -638,6 +649,18 @@ return baseclass.extend({
 			// medium from the announcement of the hardif it reached.
 			if (peer && peer.kind && !row.backhaul)
 				row.backhaul = peer.kind;
+
+			// The local measurement of a direct link is exact; only a row
+			// whose table has no rate (an older batman or a hostname
+			// neighbor) takes the rate the remote device announced.
+			if (peer && peer.speed && !row.speed)
+				row.speed = peer.speed;
+
+			// "batctl n" names the receiving interface of a direct link.  A
+			// row built from an announcement has no local interface, so it
+			// shows the name the owning device gave that hardif.
+			if (peer && peer.iface && !row.iface)
+				row.iface = peer.iface;
 		}
 
 		if (localKnown || localKey) {
@@ -655,7 +678,7 @@ return baseclass.extend({
 					neighbor: mac,
 					ips: peer.ip ? [ peer.ip ] : [],
 					lanMac: peer.lanMac || '',
-					iface: '',
+					iface: peer.iface || '',
 					backhaul: peer.kind || '',
 					frequency: '',
 					channel: '',
@@ -663,7 +686,7 @@ return baseclass.extend({
 					signal: '',
 					load: peer.load || '',
 					utilization: '',
-					speed: '',
+					speed: peer.speed || '',
 					lastSeen: '',
 					backhaulState: peer.state || ''
 				});

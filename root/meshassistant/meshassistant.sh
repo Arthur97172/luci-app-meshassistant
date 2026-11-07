@@ -1769,6 +1769,28 @@ mesh_hardif_macs() {
 }
 
 
+# Best direct link speed "batctl n" reports for each local hardif, in the unit
+# batctl prints (Mbit/s).  batman measures the link itself, so the owning
+# device is the only one that can rate a link no other device is an endpoint
+# of; the announcement carries the value to the rest of the mesh.  A hardif
+# without a direct neighbor has no measurable rate and is left out.
+mesh_hardif_speeds() {
+    batctl meshif bat0 neighbors 2>/dev/null | awk '
+        $3 == "(" && NF >= 5 {
+            iface = $NF
+            gsub(/[^A-Za-z0-9_.@-]/, "", iface)
+            speed = $4
+            gsub(/[^0-9.]/, "", speed)
+            if (iface != "" && speed ~ /^[0-9]+(\.[0-9]+)?$/)
+                if (!(iface in best) || speed + 0 > best[iface] + 0)
+                    best[iface] = speed
+        }
+        END {
+            for (iface in best)
+                print iface, best[iface]
+        }'
+}
+
 # Names of the local hardifs that carry at least one selected originator.
 # "batctl o" marks the candidate batman forwards through with "*"; the
 # bracketed field at the end of that line names the local hardif.
@@ -1802,7 +1824,7 @@ local_load() {
 }
 
 announce_identity() {
-    local ip brd hostname load mac lanmac selected iface state
+    local ip brd hostname load mac lanmac selected speeds iface state speed
     ip=$(lan_ipv4)
     [ -n "$ip" ] || return 0
 
@@ -1831,7 +1853,19 @@ announce_identity() {
     # Version 5 appends the medium of the announced hardif ("wlan" or "wired").
     # Together with the state it lets another device show a hardif it is not a
     # direct neighbor of, which "batctl n" alone never reveals.
+    #
+    # Version 6 appends the link speed "batctl n" measures on the announced
+    # hardif (Mbit/s).  Only the device at one end of a link can measure it, so
+    # a receiver that is not a direct neighbor of that hardif has no rate to
+    # show unless the owning device announces it.  "-" means the hardif has no
+    # direct neighbor right now.
+    #
+    # Version 7 appends the name of the announced hardif.  A receiver that is
+    # not a direct neighbor of that hardif can otherwise show its medium, state
+    # and rate but not the interface they belong to: "batctl n" only names the
+    # receiving interface of a direct link.
     selected=$(mesh_selected_ifaces)
+    speeds=$(mesh_hardif_speeds)
 
     mesh_hardif_bindings | while read -r iface mac kind; do
         [ -n "$mac" ] || continue
@@ -1845,6 +1879,10 @@ announce_identity() {
             fi
         fi
 
+        speed=$(printf '%s\n' "$speeds" \
+            | awk -v i="$iface" '$1 == i { print $2; exit }')
+        [ -n "$speed" ] || speed='-'
+
         {
             printf 'meshassistant/2 %s %s %s %s\n' "$mac" "$ip" "$hostname" "$load"
             [ -n "$lanmac" ] && \
@@ -1854,6 +1892,12 @@ announce_identity() {
                 "$mac" "${lanmac:--}" "$ip" "$hostname" "$load" "$state"
             printf 'meshassistant/5 %s %s %s %s %s %s %s\n' \
                 "$mac" "${lanmac:--}" "$ip" "$hostname" "$load" "$state" "${kind:--}"
+            printf 'meshassistant/6 %s %s %s %s %s %s %s %s\n' \
+                "$mac" "${lanmac:--}" "$ip" "$hostname" "$load" "$state" \
+                "${kind:--}" "$speed"
+            printf 'meshassistant/7 %s %s %s %s %s %s %s %s %s\n' \
+                "$mac" "${lanmac:--}" "$ip" "$hostname" "$load" "$state" \
+                "${kind:--}" "$speed" "$iface"
         } | socat -u - "UDP-DATAGRAM:$brd:$MESHASSISTANT_PORT,broadcast" 2>/dev/null
     done
 }
@@ -1889,11 +1933,13 @@ peer_append() {
 # ones so that receivers which only understand the older formats keep working.
 # Each accepted line is stored as
 # "<epoch> <mesh MAC> <IPv4|-> <hostname> <load|-> [<LAN MAC|->] [<state>]
-# [<kind>]"; only a version 3 line and newer has the LAN MAC, only a version 4
-# line and newer has the state and only a version 5 line has the medium of the
-# hardif.
+# [<kind>] [<speed|->] [<iface|->]"; only a version 3 line and newer has the
+# LAN MAC, only a version 4 line and newer has the state, only a version 5
+# line and newer has the medium of the hardif, only a version 6 line has the
+# link speed its device measures on that hardif and only a version 7 line has
+# the hardif name.
 record_peer() {
-    local proto rest mac lanmac ip hostname load state kind ts count
+    local proto rest mac lanmac ip hostname load state kind speed iface ts count
     while read -r proto rest || [ -n "$proto" ]; do
         mac=''
         lanmac=''
@@ -1902,6 +1948,8 @@ record_peer() {
         load=''
         state=''
         kind=''
+        speed=''
+        iface=''
 
         # Split the datagram without pathname expansion: its content comes
         # from the network and must not expand a glob.
@@ -1931,6 +1979,16 @@ record_peer() {
                 [ "$count" -ge 7 ] || continue
                 mac=$1 lanmac=$2 ip=$3 hostname=$4 load=$5 state=$6 kind=$7
                 ;;
+            meshassistant/6)
+                [ "$count" -ge 8 ] || continue
+                mac=$1 lanmac=$2 ip=$3 hostname=$4 load=$5 state=$6 kind=$7
+                speed=$8
+                ;;
+            meshassistant/7)
+                [ "$count" -ge 9 ] || continue
+                mac=$1 lanmac=$2 ip=$3 hostname=$4 load=$5 state=$6 kind=$7
+                speed=$8 iface=$9
+                ;;
             *) continue ;;
         esac
 
@@ -1941,7 +1999,9 @@ record_peer() {
         esac
 
         if [ "$proto" = 'meshassistant/3' ] || [ "$proto" = 'meshassistant/4' ] \
-                || [ "$proto" = 'meshassistant/5' ]; then
+                || [ "$proto" = 'meshassistant/5' ] \
+                || [ "$proto" = 'meshassistant/6' ] \
+                || [ "$proto" = 'meshassistant/7' ]; then
             lanmac=$(printf '%s' "$lanmac" | tr 'A-F' 'a-f')
             case "$lanmac" in
                 [0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;;
@@ -1949,18 +2009,38 @@ record_peer() {
             esac
         fi
 
-        if [ "$proto" = 'meshassistant/4' ] || [ "$proto" = 'meshassistant/5' ]; then
+        if [ "$proto" = 'meshassistant/4' ] || [ "$proto" = 'meshassistant/5' ] \
+                || [ "$proto" = 'meshassistant/6' ] \
+                || [ "$proto" = 'meshassistant/7' ]; then
             case "$state" in
                 inuse|standby) ;;
                 *) state='-' ;;
             esac
         fi
 
-        if [ "$proto" = 'meshassistant/5' ]; then
+        if [ "$proto" = 'meshassistant/5' ] || [ "$proto" = 'meshassistant/6' ] \
+                || [ "$proto" = 'meshassistant/7' ]; then
             case "$kind" in
                 wlan|wired) ;;
                 *) kind='-' ;;
             esac
+        fi
+
+        if [ "$proto" = 'meshassistant/6' ] || [ "$proto" = 'meshassistant/7' ]; then
+            case "$speed" in
+                ''|*[!0-9.]*|*.*.*) speed='-' ;;
+            esac
+        fi
+
+        # Interface names are at most IFNAMSIZ-1 bytes and use only these
+        # characters; anything else is a hand-written or corrupt datagram.
+        if [ "$proto" = 'meshassistant/7' ]; then
+            case "$iface" in
+                ''|*[!A-Za-z0-9_.@-]*) iface='-' ;;
+            esac
+            if [ "$iface" != '-' ] && [ "${#iface}" -gt 15 ]; then
+                iface='-'
+            fi
         fi
 
         [ "$ip" = "-" ] && ip=''
@@ -1977,7 +2057,11 @@ record_peer() {
         esac
 
         ts=$(date +%s)
-        if [ "$proto" = 'meshassistant/5' ]; then
+        if [ "$proto" = 'meshassistant/7' ]; then
+            peer_append "$ts $mac ${ip:--} $hostname ${load:--} $lanmac $state $kind $speed $iface"
+        elif [ "$proto" = 'meshassistant/6' ]; then
+            peer_append "$ts $mac ${ip:--} $hostname ${load:--} $lanmac $state $kind $speed"
+        elif [ "$proto" = 'meshassistant/5' ]; then
             peer_append "$ts $mac ${ip:--} $hostname ${load:--} $lanmac $state $kind"
         elif [ "$proto" = 'meshassistant/4' ]; then
             peer_append "$ts $mac ${ip:--} $hostname ${load:--} $lanmac $state"
