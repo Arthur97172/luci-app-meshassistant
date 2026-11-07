@@ -193,11 +193,12 @@ return baseclass.extend({
 	},
 
 	// Peer announcements written by the daemon.  Each line is
-	// "<epoch> <mesh MAC> <IPv4|-> <hostname> <load|-> [<LAN MAC|->]".  The
-	// load field is missing in lines written before version 2 of the
-	// announcement and the LAN MAC in lines written before version 3.  The age
-	// is measured against the newest entry in the file, not the browser clock:
-	// a router without NTP can have a clock that is far from the browser's.
+	// "<epoch> <mesh MAC> <IPv4|-> <hostname> <load|-> [<LAN MAC|->] [<state>]".
+	// The load field is missing in lines written before version 2 of the
+	// announcement, the LAN MAC in lines written before version 3 and the
+	// hardif state in lines written before version 4.  The age is measured
+	// against the newest entry in the file, not the browser clock: a router
+	// without NTP can have a clock that is far from the browser's.
 	parsePeers(text, maxAge) {
 		const entries = [];
 		const limit = maxAge == null ? 120 : Number(maxAge);
@@ -220,12 +221,13 @@ return baseclass.extend({
 			const hostname = clean(parts[3]);
 			const load = /^\d+(\.\d+)?$/.test(clean(parts[4])) ? clean(parts[4]) : '';
 			const lanMac = this.macKey(parts[5]);
+			const state = parts[6] === 'inuse' || parts[6] === 'standby' ? parts[6] : '';
 
 			if (!Number.isFinite(time) || !mac || !hostname)
 				continue;
 
 			entries.push({ time: time, mac: mac, ip: ip, hostname: hostname,
-				load: load, lanMac: lanMac });
+				load: load, lanMac: lanMac, state: state });
 
 			if (latest == null || time > latest)
 				latest = time;
@@ -489,12 +491,15 @@ return baseclass.extend({
 		return selected;
 	},
 
-	// Mark each row's link as the one batman currently uses ("inuse") or as
-	// a standby ("standby").  A device announces every hardif MAC under the
-	// same address, so the announced MACs of one device form a group; the
-	// group member that has a selected originator is that device's own
-	// originator.  Its selected nexthop names the link used to reach the
-	// device, while the device's other links stay up as a standby.
+	// Mark each row's link as the one its device currently uses ("inuse") or
+	// as a standby ("standby").  The row's MAC belongs to the remote hardif
+	// that carries the link, so the state the remote device announces for that
+	// hardif is the link's state as that device sees it.  An announcement
+	// without the state (written before version 4 of the announcement) falls
+	// back to this device's own routing: the announced MACs of one device form
+	// a group; the group member that has a selected originator is that
+	// device's originator, and the selected nexthop names the link used to
+	// reach it.
 	//
 	// A row whose device cannot be identified keeps the empty state and the
 	// view prints a dash.
@@ -534,6 +539,16 @@ return baseclass.extend({
 
 		for (const row of rows) {
 			const mac = this.macKey(row.neighbor);
+			const peer = mac ? latest[mac] : null;
+
+			// The remote device knows which of its hardifs it forwards over;
+			// this device's originator table only knows which of its own links
+			// it uses to reach that device.
+			if (peer && peer.state) {
+				row.backhaulState = peer.state;
+				continue;
+			}
+
 			const key = (row.ips && row.ips[0]) || row.hostname;
 			const state = (key && deviceState[key]) || (mac && originators[mac]) || null;
 
