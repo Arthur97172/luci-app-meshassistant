@@ -442,13 +442,13 @@ function statusTable(rows) {
 		_('Node MAC'),
 		_('IP Address'),
 		_('Interface'),
+		_('Load'),
+		_('Link Rate'),
 		_('Frequency'),
 		_('Channel'),
 		_('Channel Width'),
 		_('Signal Strength'),
-		_('Load'),
-		_('Channel Utilization'),
-		_('Link Rate')
+		_('Channel Utilization')
 	];
 
 	const table = E('div', { 'class': 'table meshassistant-status-table' }, [
@@ -468,13 +468,13 @@ function statusTable(rows) {
 			statusCell(titles[3], row.neighbor),
 			statusCell(titles[4], row.ips && row.ips.length ? row.ips.join(', ') : ''),
 			statusCell(titles[5], row.iface),
-			statusCell(titles[6], row.frequency),
-			statusCell(titles[7], row.channel),
-			statusCell(titles[8], row.width),
-			statusCell(titles[9], row.signal),
-			statusCell(titles[10], row.load),
-			statusCell(titles[11], row.utilization),
-			statusCell(titles[12], row.speed ? row.speed + ' Mbps' : '')
+			statusCell(titles[6], row.load),
+			statusCell(titles[7], row.speed ? row.speed + ' Mbps' : ''),
+			statusCell(titles[8], row.frequency),
+			statusCell(titles[9], row.channel),
+			statusCell(titles[10], row.width),
+			statusCell(titles[11], row.signal),
+			statusCell(titles[12], row.utilization)
 		]));
 	}
 
