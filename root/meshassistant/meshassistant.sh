@@ -1742,18 +1742,25 @@ lan_hwaddr() {
     printf '%s\n' "$mac"
 }
 
-# Addresses of every batman-adv hardif.  A neighbor can be reached through the
-# Mesh radio or through a wired backhaul port; "batctl n" reports the MAC of
-# the hardif that carries the link, so all of them have to be announced.
-# "<iface> <MAC>" keeps the interface name, which the announcement needs to
-# report that hardif's backhaul state.
+# Addresses and medium of every batman-adv hardif.  A neighbor can be reached
+# through the Mesh radio or through a wired backhaul port; "batctl n" reports
+# the MAC of the hardif that carries the link, so all of them have to be
+# announced.  "<iface> <MAC> <kind>" keeps the interface name, which the
+# announcement needs to report that hardif's backhaul state, and the medium,
+# which a receiver needs to label a hardif it is not a direct neighbor of.
 mesh_hardif_bindings() {
-    local iface mac
+    local iface mac kind
     for iface in $(batctl meshif bat0 interface 2>/dev/null \
             | sed -n 's/^\([^:]*\):.*/\1/p'); do
         [ -r "/sys/class/net/$iface/address" ] || continue
         mac=$(cat "/sys/class/net/$iface/address" 2>/dev/null)
-        [ -n "$mac" ] && printf '%s %s\n' "$iface" "$mac"
+        [ -n "$mac" ] || continue
+        if hardif_is_wireless "$iface"; then
+            kind=wlan
+        else
+            kind=wired
+        fi
+        printf '%s %s %s\n' "$iface" "$mac" "$kind"
     done
 }
 
@@ -1820,9 +1827,13 @@ announce_identity() {
     # The state belongs to this device, so a receiver can label the remote
     # link with the state its own device reports instead of guessing from its
     # own originator table.
+    #
+    # Version 5 appends the medium of the announced hardif ("wlan" or "wired").
+    # Together with the state it lets another device show a hardif it is not a
+    # direct neighbor of, which "batctl n" alone never reveals.
     selected=$(mesh_selected_ifaces)
 
-    mesh_hardif_bindings | while read -r iface mac; do
+    mesh_hardif_bindings | while read -r iface mac kind; do
         [ -n "$mac" ] || continue
 
         state='-'
@@ -1841,6 +1852,8 @@ announce_identity() {
                     "$mac" "$lanmac" "$ip" "$hostname" "$load"
             printf 'meshassistant/4 %s %s %s %s %s %s\n' \
                 "$mac" "${lanmac:--}" "$ip" "$hostname" "$load" "$state"
+            printf 'meshassistant/5 %s %s %s %s %s %s %s\n' \
+                "$mac" "${lanmac:--}" "$ip" "$hostname" "$load" "$state" "${kind:--}"
         } | socat -u - "UDP-DATAGRAM:$brd:$MESHASSISTANT_PORT,broadcast" 2>/dev/null
     done
 }
@@ -1872,14 +1885,15 @@ peer_append() {
 }
 
 # Called by socat for every received datagram; the datagram is on stdin.  A
-# datagram may carry several lines: the version 4 announcement follows the
-# version 2 and 3 lines so that receivers which only understand the older
-# formats keep working.  Each accepted line is stored as
-# "<epoch> <mesh MAC> <IPv4|-> <hostname> <load|-> [<LAN MAC|->] [<state>]";
-# only a version 3 line has the LAN MAC and only a version 4 line has both
-# the LAN MAC (possibly "-") and the hardif state.
+# datagram may carry several lines: the newer announcements follow the older
+# ones so that receivers which only understand the older formats keep working.
+# Each accepted line is stored as
+# "<epoch> <mesh MAC> <IPv4|-> <hostname> <load|-> [<LAN MAC|->] [<state>]
+# [<kind>]"; only a version 3 line and newer has the LAN MAC, only a version 4
+# line and newer has the state and only a version 5 line has the medium of the
+# hardif.
 record_peer() {
-    local proto rest mac lanmac ip hostname load state ts count
+    local proto rest mac lanmac ip hostname load state kind ts count
     while read -r proto rest || [ -n "$proto" ]; do
         mac=''
         lanmac=''
@@ -1887,6 +1901,7 @@ record_peer() {
         hostname=''
         load=''
         state=''
+        kind=''
 
         # Split the datagram without pathname expansion: its content comes
         # from the network and must not expand a glob.
@@ -1912,6 +1927,10 @@ record_peer() {
                 [ "$count" -ge 6 ] || continue
                 mac=$1 lanmac=$2 ip=$3 hostname=$4 load=$5 state=$6
                 ;;
+            meshassistant/5)
+                [ "$count" -ge 7 ] || continue
+                mac=$1 lanmac=$2 ip=$3 hostname=$4 load=$5 state=$6 kind=$7
+                ;;
             *) continue ;;
         esac
 
@@ -1921,7 +1940,8 @@ record_peer() {
             *) continue ;;
         esac
 
-        if [ "$proto" = 'meshassistant/3' ] || [ "$proto" = 'meshassistant/4' ]; then
+        if [ "$proto" = 'meshassistant/3' ] || [ "$proto" = 'meshassistant/4' ] \
+                || [ "$proto" = 'meshassistant/5' ]; then
             lanmac=$(printf '%s' "$lanmac" | tr 'A-F' 'a-f')
             case "$lanmac" in
                 [0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;;
@@ -1929,10 +1949,17 @@ record_peer() {
             esac
         fi
 
-        if [ "$proto" = 'meshassistant/4' ]; then
+        if [ "$proto" = 'meshassistant/4' ] || [ "$proto" = 'meshassistant/5' ]; then
             case "$state" in
                 inuse|standby) ;;
                 *) state='-' ;;
+            esac
+        fi
+
+        if [ "$proto" = 'meshassistant/5' ]; then
+            case "$kind" in
+                wlan|wired) ;;
+                *) kind='-' ;;
             esac
         fi
 
@@ -1950,7 +1977,9 @@ record_peer() {
         esac
 
         ts=$(date +%s)
-        if [ "$proto" = 'meshassistant/4' ]; then
+        if [ "$proto" = 'meshassistant/5' ]; then
+            peer_append "$ts $mac ${ip:--} $hostname ${load:--} $lanmac $state $kind"
+        elif [ "$proto" = 'meshassistant/4' ]; then
             peer_append "$ts $mac ${ip:--} $hostname ${load:--} $lanmac $state"
         elif [ "$proto" = 'meshassistant/3' ]; then
             peer_append "$ts $mac ${ip:--} $hostname ${load:--} $lanmac"

@@ -483,11 +483,19 @@ function statusTable(rows) {
 
 function renderStatus(status) {
 	const rows = status.rows;
+
+	// One node has one row per hardif, so the subtitle counts the devices, not
+	// the links.  A neighbor without an announcement has no identity to share
+	// and counts as its own device.
+	const nodes = new Set(rows.map(function(row) {
+		return (row.ips && row.ips[0]) || row.hostname || row.neighbor;
+	})).size;
+
 	const children = [
 		E('h3', {}, [ _('Mesh Status') ]),
 		E('div', { 'class': 'cbi-section-descr' }, [
 			E('strong', {}, [
-				_('Number of Active Nodes: %d').format(rows.length)
+				_('Number of Active Nodes: %d').format(nodes)
 			])
 		])
 	];

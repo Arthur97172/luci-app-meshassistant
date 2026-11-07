@@ -193,12 +193,13 @@ return baseclass.extend({
 	},
 
 	// Peer announcements written by the daemon.  Each line is
-	// "<epoch> <mesh MAC> <IPv4|-> <hostname> <load|-> [<LAN MAC|->] [<state>]".
-	// The load field is missing in lines written before version 2 of the
-	// announcement, the LAN MAC in lines written before version 3 and the
-	// hardif state in lines written before version 4.  The age is measured
-	// against the newest entry in the file, not the browser clock: a router
-	// without NTP can have a clock that is far from the browser's.
+	// "<epoch> <mesh MAC> <IPv4|-> <hostname> <load|-> [<LAN MAC|->] [<state>]
+	// [<kind>]".  The load field is missing in lines written before version 2
+	// of the announcement, the LAN MAC in lines written before version 3, the
+	// hardif state in lines written before version 4 and the hardif medium in
+	// lines written before version 5.  The age is measured against the newest
+	// entry in the file, not the browser clock: a router without NTP can have
+	// a clock that is far from the browser's.
 	parsePeers(text, maxAge) {
 		const entries = [];
 		const limit = maxAge == null ? 120 : Number(maxAge);
@@ -222,12 +223,13 @@ return baseclass.extend({
 			const load = /^\d+(\.\d+)?$/.test(clean(parts[4])) ? clean(parts[4]) : '';
 			const lanMac = this.macKey(parts[5]);
 			const state = parts[6] === 'inuse' || parts[6] === 'standby' ? parts[6] : '';
+			const kind = parts[7] === 'wlan' || parts[7] === 'wired' ? parts[7] : '';
 
 			if (!Number.isFinite(time) || !mac || !hostname)
 				continue;
 
 			entries.push({ time: time, mac: mac, ip: ip, hostname: hostname,
-				load: load, lanMac: lanMac, state: state });
+				load: load, lanMac: lanMac, state: state, kind: kind });
 
 			if (latest == null || time > latest)
 				latest = time;
@@ -567,6 +569,128 @@ return baseclass.extend({
 		return rows;
 	},
 
+	// Add one row per hardif every other device announces.  "batctl n" only
+	// lists the hardifs this device is a direct neighbor of, so a node that
+	// reaches the server through the server's wired link never sees that link,
+	// while the server's own table shows it.  The announcements describe every
+	// hardif of every mesh device, so the remote table can show the same links
+	// each remote device reports for itself.  The announced rows carry the
+	// identity, medium and state of the hardif; the measured link columns
+	// (interface, frequency, signal, rate) stay empty because this device does
+	// not run a link to them.
+	//
+	// The device also receives its own announcements.  They are dropped by the
+	// MACs "linkinfo" reports for the local hardifs and, when those are not
+	// available, by the local hostname and address; with no way to tell this
+	// device apart no announced rows are added rather than list the device
+	// twice.
+	//
+	// A device's rows are kept together, wired links before wireless ones, so
+	// the table reads per device like the Local Host table of that device.
+	mergeAnnouncedRows(rows, entries, links, identity) {
+		const latest = this.latestPeers(entries);
+		const localMacs = {};
+		let localKnown = false;
+
+		for (const iface of Object.keys(links || {})) {
+			const mac = links[iface].mac;
+
+			if (mac) {
+				localMacs[mac] = true;
+				localKnown = true;
+			}
+		}
+
+		const localKey = identity ? (identity.ip || identity.hostname) : '';
+		const present = {};
+
+		for (const row of rows) {
+			const mac = this.macKey(row.neighbor);
+			const peer = mac ? latest[mac] : null;
+
+			if (mac)
+				present[mac] = true;
+
+			// A receiver whose "linkinfo" has no kind lines can still name the
+			// medium from the announcement of the hardif it reached.
+			if (peer && peer.kind && !row.backhaul)
+				row.backhaul = peer.kind;
+		}
+
+		if (localKnown || localKey) {
+			for (const mac of Object.keys(latest)) {
+				const peer = latest[mac];
+				const key = peer.ip || peer.hostname;
+
+				if (present[mac] || localMacs[mac])
+					continue;
+				if (localKey && key === localKey)
+					continue;
+
+				rows.push({
+					hostname: peer.hostname,
+					neighbor: mac,
+					ips: peer.ip ? [ peer.ip ] : [],
+					iface: '',
+					backhaul: peer.kind || '',
+					frequency: '',
+					channel: '',
+					width: '',
+					signal: '',
+					load: peer.load || '',
+					utilization: '',
+					speed: '',
+					lastSeen: '',
+					backhaulState: peer.state || ''
+				});
+			}
+		}
+
+		return this.groupRemoteRows(rows);
+	},
+
+	// Group the rows of one device together, keeping the order in which the
+	// devices first appear.  Rows without an announcement fall back to the
+	// neighbor column, which batctl prints either as the hardif MAC or, in an
+	// older format, as the hostname.  Wired links come first so the rows of a
+	// wired and a wireless hardif appear in the same order as in that device's
+	// own table.
+	groupRemoteRows(rows) {
+		const groups = [];
+		const byKey = {};
+
+		function rank(row) {
+			return row.backhaul === 'wired' ? 0 : row.backhaul === 'wlan' ? 1 : 2;
+		}
+
+		for (const row of rows) {
+			const key = (row.ips && row.ips[0]) || row.hostname || row.neighbor || '';
+			let group = key ? byKey[key] : null;
+
+			if (!group) {
+				group = { rows: [] };
+
+				if (key)
+					byKey[key] = group;
+
+				groups.push(group);
+			}
+
+			group.rows.push(row);
+		}
+
+		const result = [];
+
+		for (const group of groups) {
+			group.rows.sort(function(a, b) { return rank(a) - rank(b); });
+
+			for (const row of group.rows)
+				result.push(row);
+		}
+
+		return result;
+	},
+
 	// The local device has no link to itself.  Its row mirrors the neighbor
 	// link with the strongest signal, so the signal and link rate columns
 	// carry the same kind of values as the remote rows.  A wired backhaul has
@@ -705,10 +829,12 @@ return baseclass.extend({
 		this.annotateLinks(rows, links);
 		this.annotateBackhaulState(rows, originators, peers);
 
+		const local = this.parseLocalRows(reply.stdout, linkReply, rows, originators);
+
 		return {
 			ok: true,
-			rows: rows,
-			local: this.parseLocalRows(reply.stdout, linkReply, rows, originators),
+			rows: this.mergeAnnouncedRows(rows, peers, links, info),
+			local: local,
 			role: info ? info.role : ''
 		};
 	}
