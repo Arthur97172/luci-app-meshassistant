@@ -322,7 +322,7 @@ DHCP 模式下，可以在服务器的 LuCI「状态 → DHCP 租约」查看节
 恢复方法：
 
 ```sh
-bash /meshassistant/meshassistant.sh undumb
+bash /etc/meshassistant/shell/meshassistant.sh undumb
 ```
 
 脚本会把当前配置移到 `/etc/config/*.dumbap` 留作参考，恢复 `*.meshbak`，并重新启用相关服务。
@@ -566,7 +566,7 @@ A 的 LAN 地址需要在 **网络 → 接口 → LAN** 中提前设置好；「
 ### 9.2 恢复哑 AP
 
 ```sh
-bash /meshassistant/meshassistant.sh undumb
+bash /etc/meshassistant/shell/meshassistant.sh undumb
 ```
 
 ### 9.3 应急恢复
@@ -624,7 +624,7 @@ bash /meshassistant/meshassistant.sh undumb
 需要 SSH 时，可以只读地查看备份：
 
 ```sh
-bash /meshassistant/meshassistant.sh backup list
+bash /etc/meshassistant/shell/meshassistant.sh backup list
 ls -l /etc/meshassistant/backup
 tar -tf /etc/meshassistant/backup/20261105-143022.tar
 ```

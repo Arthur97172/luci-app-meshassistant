@@ -24,7 +24,7 @@ MESHASSISTANT_LAN_STATE=${MESHASSISTANT_LAN_STATE:-/tmp/meshassistant_lan_state}
 # and of the backup actions instead of showing only the last detached run.
 if [ "$1" = "--detach" ]; then
     shift
-    /meshassistant/meshassistant.sh "$@" >>"$MESHASSISTANT_LOG" 2>&1 &
+    /etc/meshassistant/shell/meshassistant.sh "$@" >>"$MESHASSISTANT_LOG" 2>&1 &
     exit 0
 fi
 
@@ -2109,7 +2109,7 @@ daemon_meshassistant() {
         : > "$MESHASSISTANT_PEERS"
     } 9>>"$MESHASSISTANT_PEERS.lock"
     socat -u "UDP-RECVFROM:$MESHASSISTANT_PORT,reuseaddr,fork" \
-        "EXEC:/meshassistant/meshassistant.sh peer" >/dev/null 2>&1 &
+        "EXEC:/etc/meshassistant/shell/meshassistant.sh peer" >/dev/null 2>&1 &
     listener=$!
 
     trap "kill $listener 2>/dev/null; rm -f '$MESHASSISTANT_PEERS'; exit 0" INT TERM

@@ -228,7 +228,7 @@ for details.
 - **Dumb AP mode** changes the management address, removes WAN and disables the
   firewall and DHCP services. The button asks for confirmation first. Back up
   the configuration and make sure you have physical access; undo it with
-  `bash /meshassistant/meshassistant.sh undumb`.
+  `bash /etc/meshassistant/shell/meshassistant.sh undumb`.
 - **Reversible**: enabling/disabling the mesh, wired backhaul ports and node
   LAN/hostname values are backed up and restored. Installing or booting never
   changes the network; the default configuration is `enabled=0`.
@@ -236,7 +236,7 @@ for details.
 ## How it works and safety
 
 The frontend reads UCI and `batctl n`, writes the form to
-`/etc/config/meshassistant`, and executes `/meshassistant/meshassistant.sh`
+`/etc/config/meshassistant`, and executes `/etc/meshassistant/shell/meshassistant.sh`
 through RPC. The browser never assembles shell commands; the rpcd ACL permits
 fixed read-only calls (`/usr/sbin/batctl n`, `linkinfo`, `backup list` and
 similar) and fixed write operations (`--detach`, `--detach dumbap`, `--detach

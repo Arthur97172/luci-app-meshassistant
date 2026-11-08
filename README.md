@@ -132,12 +132,12 @@ Mesh 在二层把服务器、节点和客户端连成同一个网段：三者的
 - **服务器**：一个 Mesh 中只应有一台服务器；可用 WAN 口接上游（服务器做 NAT 和 DHCP），也可用 LAN 口接上游（DHCP 复用，由主路由负责 NAT/DHCP，此时关闭「服务器提供 DHCP」）。详见[服务器上行方式](#服务器上行方式)。
 - **主机名唯一**：整个 Mesh 中每台设备（含服务器）的主机名必须互不相同，否则状态页无法分清是哪台设备。页面按设备广播的 LAN 网桥 MAC 把各回程接口归组到同一台设备，只有报文不含该 MAC（旧版本设备）时才退回按主机名识别——这种情况下重名会让两台设备在列表中合并为一条，活动节点数也会少算。
 - **节点 / 客户端**：不提供 DHCP/NAT；没有 DHCP 服务器或需要固定管理地址时，在「AP 模式」中配置静态 IP。原来的 `wwan` STA 应删除或禁用，避免保留竞争性的默认路由。
-- **哑 AP 模式**：会更换管理地址、删除 WAN 并停用防火墙与 DHCP 服务。点击按钮后会先弹出确认对话框；操作前请备份配置，并确保能物理接触到设备。恢复命令为 `bash /meshassistant/meshassistant.sh undumb`。
+- **哑 AP 模式**：会更换管理地址、删除 WAN 并停用防火墙与 DHCP 服务。点击按钮后会先弹出确认对话框；操作前请备份配置，并确保能物理接触到设备。恢复命令为 `bash /etc/meshassistant/shell/meshassistant.sh undumb`。
 - **可逆性**：启用/关闭 Mesh、有线回程端口和节点 LAN/主机名都会记录原值并在关闭时恢复；安装和开机不会自动改动网络，默认配置为 `enabled=0`。
 
 ## 工作原理与安全
 
-前端读取 UCI 与 `batctl n`，把表单写入 `/etc/config/meshassistant`，并通过 RPC 执行 `/meshassistant/meshassistant.sh`。浏览器不拼接 shell 命令；rpcd ACL 只允许固定的只读调用（如 `/usr/sbin/batctl n`、`linkinfo`、`backup list`）和固定的写操作（`--detach`、`--detach dumbap`、`--detach backup restore`、`backup create`、`backup delete`、`backup clear`）。恢复时选择的归档名通过固定文件 `/tmp/meshassistant_backup_selection` 传递，不会把用户输入拼进命令行。UCI 权限为可读 `meshassistant`、`network`、`wireless`，只可写 `meshassistant`；对 `network`、`firewall`、`dhcp`、`system` 的修改全部在 root 脚本内部完成。
+前端读取 UCI 与 `batctl n`，把表单写入 `/etc/config/meshassistant`，并通过 RPC 执行 `/etc/meshassistant/shell/meshassistant.sh`。浏览器不拼接 shell 命令；rpcd ACL 只允许固定的只读调用（如 `/usr/sbin/batctl n`、`linkinfo`、`backup list`）和固定的写操作（`--detach`、`--detach dumbap`、`--detach backup restore`、`backup create`、`backup delete`、`backup clear`）。恢复时选择的归档名通过固定文件 `/tmp/meshassistant_backup_selection` 传递，不会把用户输入拼进命令行。UCI 权限为可读 `meshassistant`、`network`、`wireless`，只可写 `meshassistant`；对 `network`、`firewall`、`dhcp`、`system` 的修改全部在 root 脚本内部完成。
 
 脚本以 `--detach` 在后台执行，避免 WiFi/网络重启导致 RPC 超时。服务器把 `bat0` 设为 `gw_mode=server` 并加入 LAN 桥；节点/客户端把 `bat0` 设为 `gw_mode=off`，停用 `firewall`、`dnsmasq`、`odhcpd` 并记录以便恢复。关闭 Mesh 时脚本只撤销自己记录过的改动。
 

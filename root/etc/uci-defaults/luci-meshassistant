@@ -21,6 +21,10 @@ EOF
 rm -f /tmp/luci-indexcache
 
 # The peer identity service is enabled at boot; it only starts while
-# meshassistant.config.enabled is 1.
-[ -x /etc/init.d/meshassistant ] && /etc/init.d/meshassistant enable
+# meshassistant.config.enabled is 1.  Restart it so an upgrade running the
+# script from its old path switches to the installed one.
+if [ -x /etc/init.d/meshassistant ]; then
+	/etc/init.d/meshassistant enable
+	/etc/init.d/meshassistant restart
+fi
 exit 0

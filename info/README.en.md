@@ -327,7 +327,7 @@ Clicking the button opens a confirmation dialog; the mode is only applied after 
 To undo it:
 
 ```sh
-bash /meshassistant/meshassistant.sh undumb
+bash /etc/meshassistant/shell/meshassistant.sh undumb
 ```
 
 The current configuration is moved to `/etc/config/*.dumbap` for reference, the `*.meshbak` files are restored, and the disabled services are re-enabled.
@@ -572,7 +572,7 @@ The script removes the mesh/AP interfaces, deletes `bat0` and `mesh_batman`, ret
 ### 9.2 Undo Dumb AP mode
 
 ```sh
-bash /meshassistant/meshassistant.sh undumb
+bash /etc/meshassistant/shell/meshassistant.sh undumb
 ```
 
 ### 9.3 Emergency recovery
@@ -637,7 +637,7 @@ again at the new address.
 Over SSH you can inspect the archives read-only:
 
 ```sh
-bash /meshassistant/meshassistant.sh backup list
+bash /etc/meshassistant/shell/meshassistant.sh backup list
 ls -l /etc/meshassistant/backup
 tar -tf /etc/meshassistant/backup/20261105-143022.tar
 ```

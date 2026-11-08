@@ -11,8 +11,8 @@
 			"file": {
 				"/usr/sbin/batctl n": [ "exec" ],
 				"/usr/sbin/batctl o": [ "exec" ],
-				"/meshassistant/meshassistant.sh linkinfo": [ "exec" ],
-				"/meshassistant/meshassistant.sh backup list": [ "exec" ],
+				"/etc/meshassistant/shell/meshassistant.sh linkinfo": [ "exec" ],
+				"/etc/meshassistant/shell/meshassistant.sh backup list": [ "exec" ],
 				"/tmp/meshassistant_peers": [ "read" ],
 				"/tmp/meshassistant.log": [ "read" ]
 			},
@@ -23,13 +23,13 @@
 				"file": [ "exec" ]
 			},
 			"file": {
-				"/meshassistant/meshassistant.sh --detach": [ "exec" ],
-				"/meshassistant/meshassistant.sh --detach dumbap": [ "exec" ],
-				"/meshassistant/meshassistant.sh --detach backup restore": [ "exec" ],
-				"/meshassistant/meshassistant.sh clearlog": [ "exec" ],
-				"/meshassistant/meshassistant.sh backup create": [ "exec" ],
-				"/meshassistant/meshassistant.sh backup delete": [ "exec" ],
-				"/meshassistant/meshassistant.sh backup clear": [ "exec" ],
+				"/etc/meshassistant/shell/meshassistant.sh --detach": [ "exec" ],
+				"/etc/meshassistant/shell/meshassistant.sh --detach dumbap": [ "exec" ],
+				"/etc/meshassistant/shell/meshassistant.sh --detach backup restore": [ "exec" ],
+				"/etc/meshassistant/shell/meshassistant.sh clearlog": [ "exec" ],
+				"/etc/meshassistant/shell/meshassistant.sh backup create": [ "exec" ],
+				"/etc/meshassistant/shell/meshassistant.sh backup delete": [ "exec" ],
+				"/etc/meshassistant/shell/meshassistant.sh backup clear": [ "exec" ],
 				"/tmp/meshassistant_backup_selection": [ "write" ]
 			},
 			"uci": [ "meshassistant" ]

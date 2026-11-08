@@ -14,7 +14,7 @@ document.querySelector('head').appendChild(E('link', {
 }));
 
 const BATCTL = '/usr/sbin/batctl';
-const SCRIPT = '/meshassistant/meshassistant.sh';
+const SCRIPT = '/etc/meshassistant/shell/meshassistant.sh';
 const PEERS_FILE = '/tmp/meshassistant_peers';
 const LOG_FILE = '/tmp/meshassistant.log';
 const BACKUP_DIR = '/etc/meshassistant/backup';
