@@ -493,17 +493,17 @@ function roamingHint(caps) {
 
 	if (caps.kvr && !caps.wnm)
 		return E('div', { 'class': 'alert-message warning' }, [
-			_('Client roaming is enabled, but the installed wpad build has no 802.11v support, so DAWN cannot steer clients. Install wpad-mbedtls, wpad-openssl, wpad-wolfssl or a wpad-mesh variant, or turn client roaming off.')
+			_('Client roaming is on, but this wpad build lacks 802.11v. Install a full wpad build or turn roaming off.')
 		]);
 
 	if (caps.kvr && !caps.dawn)
 		return E('div', { 'class': 'alert-message warning' }, [
-			_('Client roaming is enabled, but DAWN is not installed, so clients are not steered.')
+			_('Client roaming is on, but DAWN is not installed, so clients are not steered.')
 		]);
 
 	if (!caps.kvr && caps.wnm && caps.dawn)
 		return E('div', { 'class': 'alert-message info' }, [
-			_('This device supports 802.11k/v. Enable “Client Roaming” on the Advanced Settings tab to let DAWN steer clients to the strongest access point.')
+			_('This device supports 802.11k/v; client roaming can be enabled in Advanced Settings.')
 		]);
 
 	return null;
