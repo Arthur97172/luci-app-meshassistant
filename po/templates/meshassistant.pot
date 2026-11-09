@@ -146,6 +146,15 @@ msgstr ""
 msgid "Let DAWN steer clients to the strongest access point. Requires a full wpad build (wpad-mbedtls, wpad-openssl, wpad-wolfssl or a wpad-mesh variant); wpad-basic has no 802.11v support and roaming is left off."
 msgstr ""
 
+msgid "Client roaming is enabled, but the installed wpad build has no 802.11v support, so DAWN cannot steer clients. Install wpad-mbedtls, wpad-openssl, wpad-wolfssl or a wpad-mesh variant, or turn client roaming off."
+msgstr ""
+
+msgid "Client roaming is enabled, but DAWN is not installed, so clients are not steered."
+msgstr ""
+
+msgid "This device supports 802.11k/v. Enable “Client Roaming” on the Advanced Settings tab to let DAWN steer clients to the strongest access point."
+msgstr ""
+
 msgid "Keep current (%s)"
 msgstr ""
 

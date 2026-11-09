@@ -105,6 +105,8 @@ These settings are not limited to Dumb AP mode: a normal node enable also applie
 
 Client roaming needs a full wpad build (`wpad-mbedtls`, `wpad-openssl`, `wpad-wolfssl` or a `wpad-mesh-*` variant). The usual `wpad-basic-*` build has no 802.11v (`CONFIG_WNM_AP`): the script then leaves DAWN stopped and logs a warning. Do not set `bss_transition=1` by hand; hostapd refuses to start on an option it was not compiled with.
 
+The **Mesh Status** tab checks the installed wpad build and DAWN: when the device supports 802.11k/v and roaming is still off, it shows a hint that the feature can be enabled; when roaming is on but wpad lacks 802.11v or DAWN is missing, it shows a warning that clients will not be steered. With roaming off, 802.11r fast transition still applies and clients still roam on their own.
+
 The Mobility Domain (four hex digits) is used for 802.11r fast transition and must match on every device. When the option has never been saved, the script derives it from the Mesh SSID, so devices sharing a Mesh SSID also share the domain.
 
 Turning roaming off or removing the package stops and disables DAWN when the plugin had taken it over, and restores the `/etc/config/dawn` found at that point (or removes the generated file when there was none). A DAWN configured by the user is left alone.

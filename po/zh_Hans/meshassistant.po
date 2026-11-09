@@ -148,6 +148,15 @@ msgstr "客户端漫游（802.11k/v）"
 msgid "Let DAWN steer clients to the strongest access point. Requires a full wpad build (wpad-mbedtls, wpad-openssl, wpad-wolfssl or a wpad-mesh variant); wpad-basic has no 802.11v support and roaming is left off."
 msgstr "由 DAWN 引导客户端切换到信号最强的接入点。需要完整版 wpad（wpad-mbedtls、wpad-openssl、wpad-wolfssl 或 wpad-mesh 变体）；wpad-basic 不支持 802.11v，漫游将保持关闭。"
 
+msgid "Client roaming is enabled, but the installed wpad build has no 802.11v support, so DAWN cannot steer clients. Install wpad-mbedtls, wpad-openssl, wpad-wolfssl or a wpad-mesh variant, or turn client roaming off."
+msgstr "客户端漫游已开启，但当前 wpad 不支持 802.11v，DAWN 无法引导客户端。请安装 wpad-mbedtls、wpad-openssl、wpad-wolfssl 或 wpad-mesh 变体，或关闭客户端漫游。"
+
+msgid "Client roaming is enabled, but DAWN is not installed, so clients are not steered."
+msgstr "客户端漫游已开启，但 DAWN 未安装，客户端不会被引导。"
+
+msgid "This device supports 802.11k/v. Enable “Client Roaming” on the Advanced Settings tab to let DAWN steer clients to the strongest access point."
+msgstr "这台设备支持 802.11k/v。在「高级设置」中开启「客户端漫游」，即可由 DAWN 引导客户端切换到信号最强的接入点。"
+
 msgid "Keep current (%s)"
 msgstr "保持当前值（%s）"
 

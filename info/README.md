@@ -100,6 +100,8 @@ cp /etc/config/network /etc/config/wireless /etc/config/dhcp \
 
 客户端漫游需要完整版 wpad（`wpad-mbedtls`、`wpad-openssl`、`wpad-wolfssl` 或 `wpad-mesh-*`）。默认的 `wpad-basic-*` 没有编译 802.11v（`CONFIG_WNM_AP`）：此时脚本会保持 DAWN 关闭并在运行日志中告警。不要手动设置 `bss_transition=1`，hostapd 会因未知配置项而无法启动。
 
+「Mesh 状态」标签页会检测当前 wpad 与 DAWN 的能力：设备支持 802.11k/v 而漫游尚未开启时，显示可以开启的提示；漫游已开启但 wpad 缺少 802.11v，或 DAWN 未安装时，显示告警说明客户端不会被引导。即使不开启漫游，802.11r 快速切换仍然生效，客户端也会自行切换 AP。
+
 移动域（4 位十六进制）用于 802.11r 快速切换，所有设备应保持一致。没有保存过该选项时，脚本会按 Mesh SSID 推导，因此使用同一 Mesh SSID 的设备会得到相同的移动域。
 
 关闭漫游或卸载插件时，如果 DAWN 是由插件接管的，脚本会停止并禁用 DAWN，并恢复接管前的 `/etc/config/dawn`（接管前没有该文件则删除）；用户自己配置的 DAWN 不受影响。

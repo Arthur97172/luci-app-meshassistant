@@ -17,7 +17,7 @@
 | 普通 AP + Mesh 回程 | 普通 WiFi 可从 2.4 GHz、5 GHz、6 GHz 中选择最多两个射频（共用同一 SSID），Mesh 回程单独选择射频；Mesh 射频为单选 |
 | MLO 多链路 | 普通 AP 选择两个射频时可启用 MLO，把两个射频合并为一个 Wi-Fi 7 多链路接入点；所选射频会自动切换为 EHT 模式 |
 | 有线回程 | 可选择专用一个 LAN 口作为 Mesh 有线回程：插网线时使用有线，拔掉后自动改用 Mesh 无线 |
-| Mesh 状态 | 读取 `batctl n`、`iw` 及节点间的主机公告，显示活动节点数、远程主机与本机信息，包括接口、节点 MAC、路由器自身的 LAN 地址、信号强度、负载、信道占用率、链路速率和最后发现时间；状态页打开时每 10 秒自动刷新（页面在后台或切到其他标签页时暂停，切回时立即刷新） |
+| Mesh 状态 | 读取 `batctl n`、`iw` 及节点间的主机公告，显示活动节点数、远程主机与本机信息，包括接口、节点 MAC、路由器自身的 LAN 地址、信号强度、负载、信道占用率、链路速率和最后发现时间；状态页打开时每 10 秒自动刷新（页面在后台或切到其他标签页时暂停，切回时立即刷新）；同时检测 wpad 能力，在支持 802.11k/v 但未开启客户端漫游时提示可以开启 |
 | 后台应用 | 应用设置时脚本脱离页面在后台执行，并只做非破坏性的网络 / 无线重载，避免请求超时或页面掉线 |
 | 备份管理 | 「备份管理」标签页可创建、恢复、删除或清空整机配置快照；点击「保存并应用」时会先自动备份保存前的配置，归档存放于 `/etc/meshassistant/backup` |
 | Dumb AP 模式 | 把节点切换为接入现有网络的哑 AP（会更换管理地址，操作前有确认对话框） |
@@ -137,7 +137,7 @@ Mesh 在二层把服务器、节点和客户端连成同一个网段：三者的
 
 ## 工作原理与安全
 
-前端读取 UCI 与 `batctl n`，把表单写入 `/etc/config/meshassistant`，并通过 RPC 执行 `/etc/meshassistant/shell/meshassistant.sh`。浏览器不拼接 shell 命令；rpcd ACL 只允许固定的只读调用（如 `/usr/sbin/batctl n`、`linkinfo`、`backup list`）和固定的写操作（`--detach`、`--detach dumbap`、`--detach backup restore`、`backup create`、`backup delete`、`backup clear`）。恢复时选择的归档名通过固定文件 `/tmp/meshassistant_backup_selection` 传递，不会把用户输入拼进命令行。UCI 权限为可读 `meshassistant`、`network`、`wireless`，只可写 `meshassistant`；对 `network`、`firewall`、`dhcp`、`system` 的修改全部在 root 脚本内部完成。
+前端读取 UCI 与 `batctl n`，把表单写入 `/etc/config/meshassistant`，并通过 RPC 执行 `/etc/meshassistant/shell/meshassistant.sh`。浏览器不拼接 shell 命令；rpcd ACL 只允许固定的只读调用（如 `/usr/sbin/batctl n`、`linkinfo`、`capabilities`、`backup list`）和固定的写操作（`--detach`、`--detach dumbap`、`--detach backup restore`、`backup create`、`backup delete`、`backup clear`）。恢复时选择的归档名通过固定文件 `/tmp/meshassistant_backup_selection` 传递，不会把用户输入拼进命令行。UCI 权限为可读 `meshassistant`、`network`、`wireless`，只可写 `meshassistant`；对 `network`、`firewall`、`dhcp`、`system` 的修改全部在 root 脚本内部完成。
 
 脚本以 `--detach` 在后台执行，避免 WiFi/网络重启导致 RPC 超时。服务器把 `bat0` 设为 `gw_mode=server` 并加入 LAN 桥；节点/客户端把 `bat0` 设为 `gw_mode=off`，停用 `firewall`、`dnsmasq`、`odhcpd` 并记录以便恢复。关闭 Mesh 时脚本只撤销自己记录过的改动。
 

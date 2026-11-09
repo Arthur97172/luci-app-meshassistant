@@ -1292,6 +1292,20 @@ wnm_supported() {
     [ "$MESHASSISTANT_WNM_OK" = 1 ]
 }
 
+# Read-only report for the status page.  It runs the same wpad probe as an
+# apply, so the hint the page shows matches what enabling client roaming would
+# actually do: kvr is the roaming switch, wnm whether the installed wpad build
+# has 802.11v, dawn whether DAWN is installed.
+capabilities() {
+    local kvr=0 wnm=0 dawn=0
+
+    [ "$(uci -q get meshassistant.config.kvr)" = 1 ] && kvr=1
+    wnm_supported && wnm=1
+    [ -x /etc/init.d/dawn ] && dawn=1
+
+    printf 'kvr=%s\nwnm=%s\ndawn=%s\n' "$kvr" "$wnm" "$dawn"
+}
+
 # Write the settings shared by every regular WiFi AP.  $1 is the UCI section
 # name, $2 the wireless device (or device list) it serves and $3 the optional
 # SSID for this section (defaults to the shared WIFI_ID).
@@ -2853,6 +2867,11 @@ fi
 
 if [ "$1" = "linkinfo" ]; then
     link_info
+    exit 0
+fi
+
+if [ "$1" = "capabilities" ]; then
+    capabilities
     exit 0
 fi
 

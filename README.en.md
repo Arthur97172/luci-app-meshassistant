@@ -26,7 +26,7 @@ The package lives under **Network → Mesh Assistant**
 | Regular AP + mesh backhaul | The regular WiFi can use up to two of 2.4 GHz, 5 GHz and 6 GHz with the same SSID, while the mesh backhaul picks its own radio; the mesh radio is single-select |
 | MLO | With two regular AP radios, MLO combines them into a single Wi-Fi 7 multi-link access point; the selected radios are switched to EHT mode |
 | Wired backhaul | Optionally dedicate one LAN port to the mesh: wired is used while the cable is connected, and the mesh radio takes over when it is not |
-| Mesh status | Reads `batctl n`, `iw` plus the peer announcements, and shows the active node count plus the remote and local host rows: interface, node MAC, the router's own LAN address, signal strength, load, channel utilization, link rate and the last-seen time; the tab refreshes every 10 seconds while it is open (paused in a background browser tab or on another tab, and refreshed immediately when switched back) |
+| Mesh status | Reads `batctl n`, `iw` plus the peer announcements, and shows the active node count plus the remote and local host rows: interface, node MAC, the router's own LAN address, signal strength, load, channel utilization, link rate and the last-seen time; the tab refreshes every 10 seconds while it is open (paused in a background browser tab or on another tab, and refreshed immediately when switched back); it also checks the wpad build and hints when 802.11k/v is supported but client roaming is still off |
 | Background apply | The script detaches from the page and only performs non-destructive network/wireless reloads, so the request cannot time out or drop the browser |
 | Backup management | The **Backup Management** tab creates, restores, deletes and clears whole-configuration snapshots; **Save & Apply** archives the pre-save configuration automatically, and archives live in `/etc/meshassistant/backup` |
 | Dumb AP mode | Turns a node into a dumb access point attached to an existing network (changes the management address; asks for confirmation first) |
@@ -238,8 +238,8 @@ for details.
 The frontend reads UCI and `batctl n`, writes the form to
 `/etc/config/meshassistant`, and executes `/etc/meshassistant/shell/meshassistant.sh`
 through RPC. The browser never assembles shell commands; the rpcd ACL permits
-fixed read-only calls (`/usr/sbin/batctl n`, `linkinfo`, `backup list` and
-similar) and fixed write operations (`--detach`, `--detach dumbap`, `--detach
+fixed read-only calls (`/usr/sbin/batctl n`, `linkinfo`, `capabilities`,
+`backup list` and similar) and fixed write operations (`--detach`, `--detach dumbap`, `--detach
 backup restore`, `backup create`, `backup delete`, `backup clear`). The archive
 chosen for a restore is passed through the fixed file
 `/tmp/meshassistant_backup_selection`, never interpolated into a command line.

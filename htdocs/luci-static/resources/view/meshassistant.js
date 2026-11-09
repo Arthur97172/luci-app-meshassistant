@@ -481,7 +481,35 @@ function statusTable(rows) {
 	return E('div', { 'class': 'meshassistant-status-scroll' }, [ table ]);
 }
 
-function renderStatus(status) {
+/*
+ * Point out when the hardware could do 802.11k/v but client roaming is still
+ * off, and when the switch is on while something needed for steering is
+ * missing.  This keeps the feature discoverable without turning it on by
+ * default.
+ */
+function roamingHint(caps) {
+	if (!caps)
+		return null;
+
+	if (caps.kvr && !caps.wnm)
+		return E('div', { 'class': 'alert-message warning' }, [
+			_('Client roaming is enabled, but the installed wpad build has no 802.11v support, so DAWN cannot steer clients. Install wpad-mbedtls, wpad-openssl, wpad-wolfssl or a wpad-mesh variant, or turn client roaming off.')
+		]);
+
+	if (caps.kvr && !caps.dawn)
+		return E('div', { 'class': 'alert-message warning' }, [
+			_('Client roaming is enabled, but DAWN is not installed, so clients are not steered.')
+		]);
+
+	if (!caps.kvr && caps.wnm && caps.dawn)
+		return E('div', { 'class': 'alert-message info' }, [
+			_('This device supports 802.11k/v. Enable “Client Roaming” on the Advanced Settings tab to let DAWN steer clients to the strongest access point.')
+		]);
+
+	return null;
+}
+
+function renderStatus(status, capabilities) {
 	const rows = status.rows;
 
 	// One node has one row per hardif, so the subtitle counts the devices, not
@@ -499,6 +527,11 @@ function renderStatus(status) {
 			])
 		])
 	];
+
+	const hint = roamingHint(capabilities);
+
+	if (hint)
+		children.push(hint);
 
 	if (!status.ok) {
 		children.push(E('div', { 'class': 'alert-message error' }, [
@@ -541,6 +574,30 @@ function readMeshStatus() {
 	]).then(function([ reply, peers, linkReply, originatorReply ]) {
 		return utils.parseStatus(reply, peers, linkReply, originatorReply);
 	});
+}
+
+/*
+ * The script prints "key=value" lines for the client-roaming capability
+ * check: kvr is the roaming switch, wnm whether the installed wpad build has
+ * 802.11v, dawn whether DAWN is installed.  A failed or incomplete read
+ * returns null, so the status page can tell "not supported" from "unknown"
+ * and does not show a warning after a transient RPC failure.
+ */
+function parseCapabilities(reply) {
+	const caps = {};
+	const text = (reply && reply.stdout) || '';
+
+	for (const line of text.split(/\r?\n/)) {
+		const match = /^([a-z_]+)=([01])$/.exec(line);
+
+		if (match)
+			caps[match[1]] = match[2] === '1';
+	}
+
+	if ((reply && reply.code) || !('wnm' in caps))
+		return null;
+
+	return caps;
 }
 
 /*
@@ -661,6 +718,7 @@ return view.extend({
 	countryList: [],
 	wiredPorts: [],
 	status: { ok: true, rows: [] },
+	capabilities: null,
 	logText: '',
 	backups: [],
 	lanDefaults: { ipaddr: '', netmask: '', gateway: '', dns: '' },
@@ -678,9 +736,10 @@ return view.extend({
 				fs.read(PEERS_FILE).catch(() => ''),
 				fs.exec(SCRIPT, [ 'linkinfo' ]).catch(() => null),
 				fs.read(LOG_FILE).catch(() => ''),
-				fs.exec(BATCTL, [ 'o' ]).catch(() => null)
+				fs.exec(BATCTL, [ 'o' ]).catch(() => null),
+				fs.exec(SCRIPT, [ 'capabilities' ]).catch(() => null)
 			]);
-		}).then(([ devices, reply, lanStatus, peers, linkReply, logText, originatorReply ]) => {
+		}).then(([ devices, reply, lanStatus, peers, linkReply, logText, originatorReply, capsReply ]) => {
 			this.radios = devices.length
 				? radioOptions(devices)
 				: uci.sections('wireless', 'wifi-device').map(function(s) {
@@ -705,6 +764,7 @@ return view.extend({
 				this.wiredPorts.unshift([ current, current ]);
 
 			this.status = utils.parseStatus(reply, peers, linkReply, originatorReply);
+			this.capabilities = parseCapabilities(capsReply);
 			this.logText = logText || '';
 			this.lanDefaults = utils.lanDefaults(lanStatus, uci.get('network', 'lan') || {});
 
@@ -767,7 +827,7 @@ return view.extend({
 	},
 
 	render() {
-		const statusEl = renderStatus(this.status);
+		const statusEl = renderStatus(this.status, this.capabilities);
 
 		const m = new form.Map('meshassistant');
 		const s = m.section(form.TypedSection, 'meshassistant', _('Mesh Settings'));
@@ -1333,7 +1393,7 @@ return view.extend({
 
 					this.status = next;
 
-					const replacement = renderStatus(this.status);
+					const replacement = renderStatus(this.status, this.capabilities);
 
 					while (statusPane.childNodes.length)
 						statusPane.removeChild(statusPane.childNodes[0]);
