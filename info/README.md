@@ -96,7 +96,13 @@ cp /etc/config/network /etc/config/wireless /etc/config/dhcp \
 
 ### 2.3 高级设置
 
-K/V/R、移动域（4 位十六进制）和 RSSI 阈值用于漫游优化。除非了解 802.11k/v/r 和 `dawn` 的行为，否则保持默认值。所有设备的移动域应保持一致。
+「客户端漫游（802.11k/v）」默认关闭。开启后，AP 会写入 802.11k 邻居报告与 802.11v（BSS Transition），脚本按界面上的「良好 / 较差 RSSI 阈值」生成 `/etc/config/dawn` 并启用 DAWN，信号变差的客户端会被引导到更强的 AP。
+
+客户端漫游需要完整版 wpad（`wpad-mbedtls`、`wpad-openssl`、`wpad-wolfssl` 或 `wpad-mesh-*`）。默认的 `wpad-basic-*` 没有编译 802.11v（`CONFIG_WNM_AP`）：此时脚本会保持 DAWN 关闭并在运行日志中告警。不要手动设置 `bss_transition=1`，hostapd 会因未知配置项而无法启动。
+
+移动域（4 位十六进制）用于 802.11r 快速切换，所有设备应保持一致。没有保存过该选项时，脚本会按 Mesh SSID 推导，因此使用同一 Mesh SSID 的设备会得到相同的移动域。
+
+关闭漫游或卸载插件时，如果 DAWN 是由插件接管的，脚本会停止并禁用 DAWN，并恢复接管前的 `/etc/config/dawn`（接管前没有该文件则删除）；用户自己配置的 DAWN 不受影响。
 
 ### 2.4 保存与应用
 

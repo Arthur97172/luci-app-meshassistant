@@ -1123,26 +1123,28 @@ return view.extend({
 			addSpectrumHint(s, radio);
 		}
 
-		o = s.taboption('advanced', form.Flag, 'kvr', _('K/V/R'), _('Leave these settings as default unless you know what you are doing.'));
-		o.default = '1';
+		o = s.taboption('advanced', form.Flag, 'kvr', _('Client Roaming (802.11k/v)'), _('Let DAWN steer clients to the strongest access point. Requires a full wpad build (wpad-mbedtls, wpad-openssl, wpad-wolfssl or a wpad-mesh variant); wpad-basic has no 802.11v support and roaming is left off.'));
+		o.default = '0';
 
 		o = s.taboption('advanced', form.Value, 'mobility_domain', _('Mobility Domain'));
 		o.default = '4f57';
 		o.datatype = 'and(hexstring,rangelength(4,4))';
 		/*
-		 * Without rmempty the default would be dropped and the script would
-		 * generate a different random domain on every device, so 802.11r
-		 * roaming across the mesh would not work.  Keep it.
+		 * Without rmempty the default would be dropped on save; the script
+		 * would then derive a value from the Mesh SSID, which is stable but
+		 * different from the one shown here.  Keep the value the user sees.
 		 */
 		o.rmempty = false;
 
-		o = s.taboption('advanced', form.Value, 'rssi_val', _('Good RSSI Threshold'));
+		o = s.taboption('advanced', form.Value, 'rssi_val', _('Good RSSI Threshold'), _('DAWN scores a connection as good at or above this signal level.'));
 		o.default = '-60';
 		o.datatype = 'range(-120,-1)';
+		o.depends('kvr', '1');
 
-		o = s.taboption('advanced', form.Value, 'low_rssi_val', _('Bad RSSI Threshold'));
+		o = s.taboption('advanced', form.Value, 'low_rssi_val', _('Bad RSSI Threshold'), _('Below this signal level DAWN treats the connection as poor and asks the client to move to a better access point.'));
 		o.default = '-88';
 		o.datatype = 'range(-120,-1)';
+		o.depends('kvr', '1');
 
 		o = s.taboption('apmode', form.Value, 'hostname', _('Node Hostname'));
 		o.default = 'node2';

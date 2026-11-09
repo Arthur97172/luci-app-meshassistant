@@ -153,7 +153,8 @@ Mesh 在二层把服务器、节点和客户端连成同一个网段：三者的
 - OpenWrt / ImmortalWrt 24.10 或 25.12，带 JavaScript 版 LuCI（`luci-base`）
 - `kmod-batman-adv`、`batctl-default`、`luci-proto-batman-adv`：Batman-adv 内核模块、命令行工具与协议支持
 - `kmod-cfg80211`：无线配置支持
-- `dawn`：802.11k/v/r 漫游守护进程
+- `dawn`：客户端漫游守护进程，在高级设置启用「客户端漫游（802.11k/v）」后由插件配置
+- 完整版 wpad（`wpad-mbedtls`、`wpad-openssl`、`wpad-wolfssl` 或 `wpad-mesh-*`）：启用客户端漫游时必需；`wpad-basic-*` 不支持 802.11v
 - `bash`：配置脚本使用 bash
 - 至少一个支持 802.11s Mesh 的无线射频；推荐双频设备，用其中一个射频做普通 AP、另一个做 Mesh 回程
 

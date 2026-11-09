@@ -101,7 +101,13 @@ These settings are not limited to Dumb AP mode: a normal node enable also applie
 
 ### 2.3 Advanced Settings
 
-K/V/R, Mobility Domain (four hex digits) and the RSSI thresholds tune roaming. Leave them at their defaults unless you understand 802.11k/v/r and `dawn`. All devices should use the same mobility domain.
+**Client Roaming (802.11k/v)** is off by default. When enabled, the AP sections get 802.11k neighbor reports and 802.11v (BSS Transition), and the script writes `/etc/config/dawn` from the **Good / Bad RSSI** values on the page and enables DAWN, so a client whose signal drops is steered to a stronger AP.
+
+Client roaming needs a full wpad build (`wpad-mbedtls`, `wpad-openssl`, `wpad-wolfssl` or a `wpad-mesh-*` variant). The usual `wpad-basic-*` build has no 802.11v (`CONFIG_WNM_AP`): the script then leaves DAWN stopped and logs a warning. Do not set `bss_transition=1` by hand; hostapd refuses to start on an option it was not compiled with.
+
+The Mobility Domain (four hex digits) is used for 802.11r fast transition and must match on every device. When the option has never been saved, the script derives it from the Mesh SSID, so devices sharing a Mesh SSID also share the domain.
+
+Turning roaming off or removing the package stops and disables DAWN when the plugin had taken it over, and restores the `/etc/config/dawn` found at that point (or removes the generated file when there was none). A DAWN configured by the user is left alone.
 
 ### 2.4 Save and apply
 

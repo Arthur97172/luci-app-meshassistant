@@ -18,6 +18,18 @@ MESHASSISTANT_LOG_MAX=${MESHASSISTANT_LOG_MAX:-262144}
 # applied, plus the address this run is expected to bring up.
 MESHASSISTANT_LAN_STATE=${MESHASSISTANT_LAN_STATE:-/tmp/meshassistant_lan_state}
 
+# DAWN state.  The plugin owns /etc/config/dawn only while client roaming is
+# enabled; the marker records that ownership so turning roaming off (or
+# removing the package) can put back the configuration that was there before.
+DAWN_CONFIG=${DAWN_CONFIG:-/etc/config/dawn}
+DAWN_MANAGED=${DAWN_MANAGED:-/etc/meshassistant/dawn_managed}
+DAWN_BACKUP=${DAWN_BACKUP:-/etc/meshassistant/dawn.backup}
+
+# Serialized operations.  The peer announcement file has its own lock
+# (lock_peers); this one keeps two applies, a restore and an apply, or a
+# backup action and an apply from interleaving their UCI writes and log trims.
+MESHASSISTANT_LOCK=${MESHASSISTANT_LOCK:-/var/lock/meshassistant.lock}
+
 # Return immediately from LuCI RPC calls: wifi/network restarts may take
 # longer than the RPC timeout and can drop the current browser connection.
 # The output is appended, so the Run Log tab keeps the record of earlier runs
@@ -76,7 +88,7 @@ uci_commit() {
     if [ -n "$changes" ]; then
         log_note "Committing UCI changes ($label):"
         printf '%s\n' "$changes" \
-            | sed -E "s/^([^=]*[._](key|psk|password|wpa_key)=).*/\1'***'/" \
+            | sed -E "s/^([^=]*[._](key|psk|password|wpa_key|shared_key|iv)=).*/\1'***'/" \
             | sed 's/^/    /'
     else
         log_note "No UCI changes to commit ($label)."
@@ -1256,6 +1268,30 @@ process_radios() {
     return "$rc"
 }
 
+# 802.11v (BSS Transition Management) is compiled into hostapd only with
+# CONFIG_WNM_AP.  The full wpad builds and the wpad-mesh variants have it;
+# wpad-basic, wpad-mini and hostapd-mini do not.  The basic builds still
+# contain substrings such as bss_transition_request_tx, so compare whole
+# NUL-terminated strings instead of a substring.
+wnm_supported() {
+    if [ -n "${MESHASSISTANT_WNM_OK:-}" ]; then
+        [ "$MESHASSISTANT_WNM_OK" = 1 ]
+        return
+    fi
+
+    MESHASSISTANT_WNM_OK=0
+    local bin
+    for bin in /usr/sbin/wpad /usr/sbin/hostapd; do
+        [ -f "$bin" ] || continue
+        if tr '\0' '\n' <"$bin" 2>/dev/null | grep -qx 'bss_transition'; then
+            MESHASSISTANT_WNM_OK=1
+            break
+        fi
+    done
+
+    [ "$MESHASSISTANT_WNM_OK" = 1 ]
+}
+
 # Write the settings shared by every regular WiFi AP.  $1 is the UCI section
 # name, $2 the wireless device (or device list) it serves and $3 the optional
 # SSID for this section (defaults to the shared WIFI_ID).
@@ -1272,6 +1308,22 @@ configure_ap_iface() {
     uci set wireless.$section.ft_over_ds='0'
     uci set wireless.$section.ft_psk_generate_local='0'
     uci set wireless.$section.disabled='0'
+
+    # 802.11k/v are only useful for steering, so they follow the roaming
+    # switch.  hostapd refuses to start on an option it was not compiled
+    # with, which would take the whole radio down, so bss_transition is only
+    # written after the installed wpad build proved it supports 802.11v.
+    if [ "${KVR_ENABLED:-0}" = 1 ]; then
+        uci set wireless.$section.ieee80211k='1'
+        if wnm_supported; then
+            uci set wireless.$section.bss_transition='1'
+        else
+            uci -q delete wireless.$section.bss_transition
+        fi
+    else
+        uci -q delete wireless.$section.ieee80211k
+        uci -q delete wireless.$section.bss_transition
+    fi
 
     # Apply encryption settings for regular WiFi
     if [ "$ENCRYPTION_ENABLED" = 1 ] && [ -n "$NETWORK_KEY" ]; then
@@ -1462,13 +1514,15 @@ apply_spectrum_settings() {
 # one WiFi 7 access point reachable over both links.  Every radio uses the same
 # key and KVR settings; the SSID is shared unless ssid_mode is 'separate'.
 setup_ap_radios() {
-    local radio managed count=0 radio_ssid configured_ssid
+    local radio managed count=0 radio_ssid configured_ssid mobility_seed
 
     WIFI_ID=$(uci -q get meshassistant.config.wifi_id)
     WIFI_RADIOS=$(uci -q get meshassistant.config.wifi_radio)
     ENCRYPTION_ENABLED=$(uci -q get meshassistant.config.encryption)
     NETWORK_KEY=$(uci -q get meshassistant.config.key)
     MOBILITY_DOMAIN=$(uci -q get meshassistant.config.mobility_domain)
+    KVR_ENABLED=$(uci -q get meshassistant.config.kvr)
+    [ -n "$KVR_ENABLED" ] || KVR_ENABLED=0
     MLO_ENABLED=$(uci -q get meshassistant.config.mlo)
     SSID_MODE=$(uci -q get meshassistant.config.ssid_mode)
     [ -z "$SSID_MODE" ] && SSID_MODE='same'
@@ -1478,10 +1532,16 @@ setup_ap_radios() {
         WIFI_ID="meshassistant_AC"
     fi
 
-    # If mobility domain is empty, generate a random 4-digit hex
+    # Every AP in the mesh must use the same mobility domain for 802.11r.
+    # The form always saves one; when the option is missing (an old config,
+    # or the script run directly) derive it from the Mesh SSID instead of
+    # picking a random value that differs on every device.
     if [ -z "$MOBILITY_DOMAIN" ]; then
-        MOBILITY_DOMAIN=$(hexdump -n 2 -e '2/1 "%02x"' /dev/urandom)
-        uci set meshassistant.config.mobility_domain=$MOBILITY_DOMAIN
+        mobility_seed=$(uci -q get meshassistant.config.mesh_id)
+        [ -n "$mobility_seed" ] || mobility_seed="$WIFI_ID"
+        MOBILITY_DOMAIN=$(printf '%s' "$mobility_seed" | cksum | awk '{ printf "%04x", $1 % 65536 }')
+        uci set meshassistant.config.mobility_domain="$MOBILITY_DOMAIN"
+        echo "Mobility domain derived from the Mesh SSID: $MOBILITY_DOMAIN"
     fi
 
     for radio in $WIFI_RADIOS; do
@@ -1612,6 +1672,108 @@ setup_mesh_radio() {
     fi
 }
 
+# Give the DAWN configuration back to the state found before the plugin
+# managed it: stop and disable the service, restore the saved /etc/config/dawn
+# (or remove the generated one when there was no original), and drop the
+# marker.  With no marker this is a no-op.
+dawn_release() {
+    [ -f "$DAWN_MANAGED" ] || return 0
+
+    /etc/init.d/dawn stop >/dev/null 2>&1
+    /etc/init.d/dawn disable >/dev/null 2>&1
+
+    if [ -f "$DAWN_BACKUP" ]; then
+        cp "$DAWN_BACKUP" "$DAWN_CONFIG"
+        rm -f "$DAWN_BACKUP"
+    else
+        rm -f "$DAWN_CONFIG"
+    fi
+
+    rm -f "$DAWN_MANAGED"
+    log_note "Stopped and disabled DAWN; client roaming is off."
+}
+
+# Write the DAWN configuration from the form values while roaming is enabled.
+#
+# DAWN is a hard dependency and the package manager enables and starts it on
+# installation, so left alone it runs the upstream defaults (kicking=3,
+# -60/-80 dBm) and can move clients while the plugin's own thresholds are not
+# in effect.  This function makes the running service match the form.  The
+# first pre-existing configuration is kept aside for dawn_release().
+setup_dawn() {
+    local kvr rssi low secret shared band
+
+    kvr=$(uci -q get meshassistant.config.kvr)
+    [ -n "$kvr" ] || kvr=0
+
+    if [ "$kvr" != 1 ] || [ "$(uci -q get meshassistant.config.enabled)" != 1 ]; then
+        dawn_release
+        return 0
+    fi
+
+    if ! wnm_supported; then
+        dawn_release
+        log_note "Warning: the installed wpad build has no 802.11v support, so DAWN was left stopped. Install wpad-mbedtls, wpad-openssl, wpad-wolfssl or a wpad-mesh variant to enable client steering."
+        return 0
+    fi
+
+    if [ ! -x /etc/init.d/dawn ]; then
+        log_note "Warning: DAWN is not installed, so client steering is unavailable."
+        return 0
+    fi
+
+    rssi=$(uci -q get meshassistant.config.rssi_val)
+    [ -n "$rssi" ] || rssi='-60'
+    low=$(uci -q get meshassistant.config.low_rssi_val)
+    [ -n "$low" ] || low='-88'
+
+    if [ ! -f "$DAWN_MANAGED" ] && [ ! -f "$DAWN_BACKUP" ] && [ -f "$DAWN_CONFIG" ]; then
+        cp "$DAWN_CONFIG" "$DAWN_BACKUP"
+    fi
+
+    # DAWN looks the global metric section up by the name "global" and the
+    # band sections by "802_11g"/"802_11a"; a config that lacks them (for
+    # example after a release removed the file) gets the named sections back.
+    [ -n "$(uci -q get dawn.global)" ] || uci set dawn.global='metric'
+    [ -n "$(uci -q get dawn.802_11g)" ] || uci set dawn.802_11g='metric'
+    [ -n "$(uci -q get dawn.802_11a)" ] || uci set dawn.802_11a='metric'
+
+    # The network section is different: DAWN takes the first "config network"
+    # section whether it is named or anonymous, and the stock file ships an
+    # anonymous one.  Address it by type so the key lands where DAWN reads it
+    # instead of in a second section it would ignore.
+    [ -n "$(uci -q get dawn.@network[0])" ] || uci add dawn network >/dev/null
+
+    secret=$(uci -q get meshassistant.config.key)
+    [ -n "$secret" ] || secret=$(uci -q get meshassistant.config.mesh_id)
+    shared=$(printf 'meshassistant:%s' "$secret" | md5sum | cut -c1-32)
+
+    # kicking=3 evaluates both the RSSI score and the absolute RSSI;
+    # kicking_threshold and min_number_to_kick keep one stray sample from
+    # moving a client.  set_hostapd_nr=1 publishes every AP in the mesh as a
+    # neighbor report.  The absolute check compares against rssi_center, so
+    # the form's Bad RSSI value is written there as well, not only to
+    # low_rssi_val which scores the connection.
+    uci set dawn.global.kicking='3'
+    uci set dawn.global.kicking_threshold='20'
+    uci set dawn.global.min_number_to_kick='3'
+    uci set dawn.global.set_hostapd_nr='1'
+    for band in 802_11g 802_11a; do
+        uci set dawn.$band.rssi_val="$rssi"
+        uci set dawn.$band.low_rssi_val="$low"
+        uci set dawn.$band.rssi_center="$low"
+    done
+    uci set dawn.@network[0].shared_key="$shared"
+
+    touch "$DAWN_MANAGED"
+    uci_commit dawn
+
+    log_note "Running: /etc/init.d/dawn enable; /etc/init.d/dawn restart"
+    /etc/init.d/dawn enable >/dev/null 2>&1
+    /etc/init.d/dawn restart >/dev/null 2>&1
+    echo "Client roaming enabled (802.11k/v via DAWN: good $rssi dBm, bad $low dBm)."
+}
+
 # Apply the complete network and wireless configuration.
 #
 # This must stay non-destructive.  The script runs detached from LuCI, so the
@@ -1659,6 +1821,11 @@ apply_mesh_config() {
     wifi reload
     log_note "Running: reload_config"
     reload_config
+
+    # DAWN reads the hostapd BSS list, so it is (re)started only after the
+    # wireless configuration above is live.
+    log_note "Phase: configuring client roaming"
+    setup_dawn
 
     # The AP Mode address is applied by the network reload above.  Verify it
     # before reporting success and roll it back when it did not come up.
@@ -1919,6 +2086,20 @@ announce_identity() {
 # writes still happen, only unserialized.
 lock_peers() {
     flock -x 9 2>/dev/null || :
+}
+
+# Take the run lock for an operation that changes UCI, the network or the
+# backups.  The descriptor stays open until the process exits, so a detached
+# run keeps the lock for its whole lifetime; daemon, peer and linkinfo are
+# read-only and do not call this.  Descriptor 8 is used because the peer
+# helpers already own descriptor 9 for the announcement file.
+take_run_lock() {
+    mkdir -p "$(dirname "$MESHASSISTANT_LOCK")" 2>/dev/null
+    exec 8>"$MESHASSISTANT_LOCK"
+    if ! flock -n 8; then
+        echo "Error: another Mesh Assistant operation is already running." >&2
+        exit 1
+    fi
 }
 
 peer_append() {
@@ -2323,6 +2504,11 @@ disable_meshassistant() {
     /etc/init.d/network reload
     wifi reload
 
+    # enabled is already 0 here, so setup_dawn stops DAWN if the plugin
+    # started managing it.
+    log_note "Phase: stopping client roaming"
+    setup_dawn
+
     # Set at end to be sure it worked
     uci -q del meshassistant.config.running
     uci_commit meshassistant
@@ -2681,6 +2867,7 @@ if [ "$1" = "backup" ]; then
     # run log here.  "list" is a read on every page load and is not logged.
     case "$2" in
         create)
+            take_run_lock
             backup_create
             rc=$?
             if [ "$rc" -eq 0 ]; then
@@ -2691,8 +2878,12 @@ if [ "$1" = "backup" ]; then
             exit "$rc"
             ;;
         list) backup_list ;;
-        restore) backup_restore ;;
+        restore)
+            take_run_lock
+            backup_restore
+            ;;
         delete)
+            take_run_lock
             backup_delete
             rc=$?
             if [ "$rc" -eq 0 ]; then
@@ -2703,6 +2894,7 @@ if [ "$1" = "backup" ]; then
             exit "$rc"
             ;;
         clear)
+            take_run_lock
             backup_clear
             rc=$?
             if [ "$rc" -eq 0 ]; then
@@ -2721,15 +2913,18 @@ if [ "$1" = "backup" ]; then
 fi
 
 if [ "$1" = "dumbap" ]; then
+    take_run_lock
     log_run_header "enabling Dumb AP mode"
     set_apmode
     exit $?
 elif [ "$1" = "undumb" ]; then
+    take_run_lock
     log_run_header "disabling Dumb AP mode"
     disable_apmode
     exit 0
 # If no params passed, we disable or enable meshassistant based on config
 else
+    take_run_lock
     # Check if meshassistant is enabled
     if [ "$(uci -q get meshassistant.config.enabled)" = 1 ]; then
         log_run_header "enabling the mesh"

@@ -274,7 +274,11 @@ Disabling the mesh only undoes changes the script recorded as its own.
 - `kmod-batman-adv`, `batctl-default`, `luci-proto-batman-adv`: the Batman-adv
   kernel module, command-line tool and protocol support
 - `kmod-cfg80211`: wireless configuration support
-- `dawn`: the 802.11k/v/r roaming daemon
+- `dawn`: the client roaming daemon, configured by the plugin when **Client
+  Roaming (802.11k/v)** is enabled
+- A full wpad build (`wpad-mbedtls`, `wpad-openssl`, `wpad-wolfssl` or a
+  `wpad-mesh-*` variant): required for client roaming; `wpad-basic-*` has no
+  802.11v support
 - `bash`: the configuration script is written in bash
 - At least one radio supporting 802.11s mesh; a dual-band device is recommended,
   using one radio for the regular AP and the other for mesh backhaul

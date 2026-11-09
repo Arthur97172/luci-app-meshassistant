@@ -6,7 +6,7 @@
 #
 
 PKG_NAME:=luci-app-meshassistant
-PKG_VERSION:=2.6.5
+PKG_VERSION:=2.6.6
 PKG_RELEASE:=1
 
 PKG_LICENSE:=GPL-3.0-only
@@ -27,6 +27,21 @@ define Package/luci-app-meshassistant/postrm
 [ "$${PKG_UPGRADE}" = "1" ] && exit 0
 rm -f /etc/config/meshassistant
 rm -f /tmp/meshassistant_peers /tmp/meshassistant.log /tmp/meshassistant_backup_selection
+# Put DAWN back the way it was before the plugin took it over, but only when
+# the plugin actually managed it; a DAWN that the user configured is left
+# alone.  The marker is created by setup_dawn().
+if [ -f /etc/meshassistant/dawn_managed ]; then
+	if [ -x /etc/init.d/dawn ]; then
+		/etc/init.d/dawn stop >/dev/null 2>&1 || true
+		/etc/init.d/dawn disable >/dev/null 2>&1 || true
+	fi
+	if [ -f /etc/meshassistant/dawn.backup ]; then
+		cp /etc/meshassistant/dawn.backup /etc/config/dawn 2>/dev/null || true
+	else
+		rm -f /etc/config/dawn
+	fi
+	rm -f /etc/meshassistant/dawn_managed /etc/meshassistant/dawn.backup
+fi
 rm -f /tmp/luci-indexcache* 2>/dev/null || true
 rm -rf /tmp/luci-modulecache/* 2>/dev/null || true
 if [ -x /etc/init.d/rpcd ]; then

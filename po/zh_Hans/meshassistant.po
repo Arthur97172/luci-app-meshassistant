@@ -124,6 +124,9 @@ msgstr "频率"
 msgid "Good RSSI Threshold"
 msgstr "良好 RSSI 阈值"
 
+msgid "DAWN scores a connection as good at or above this signal level."
+msgstr "信号电平达到或高于该值时，DAWN 会把连接评为良好。"
+
 msgid "IP Address"
 msgstr "IP 地址"
 
@@ -139,8 +142,11 @@ msgstr "使用中"
 msgid "Interface"
 msgstr "接口"
 
-msgid "K/V/R"
-msgstr "K/V/R"
+msgid "Client Roaming (802.11k/v)"
+msgstr "客户端漫游（802.11k/v）"
+
+msgid "Let DAWN steer clients to the strongest access point. Requires a full wpad build (wpad-mbedtls, wpad-openssl, wpad-wolfssl or a wpad-mesh variant); wpad-basic has no 802.11v support and roaming is left off."
+msgstr "由 DAWN 引导客户端切换到信号最强的接入点。需要完整版 wpad（wpad-mbedtls、wpad-openssl、wpad-wolfssl 或 wpad-mesh 变体）；wpad-basic 不支持 802.11v，漫游将保持关闭。"
 
 msgid "Keep current (%s)"
 msgstr "保持当前值（%s）"
@@ -148,8 +154,8 @@ msgstr "保持当前值（%s）"
 msgid "Keep this enabled when the Mesh server is the only gateway and should provide DHCP and IPv6 RA for the LAN. Disable it when another router on the LAN already provides DHCP: the server then keeps the gateway and DNS role but stops its own DHCP/RA server."
 msgstr "当 Mesh 服务器是唯一网关并为 LAN 提供 DHCP 和 IPv6 RA 时，请保持启用。若 LAN 上已有其他路由器提供 DHCP，请关闭此项：服务器仍保留网关和 DNS 角色，但会停止自身的 DHCP/RA 服务。"
 
-msgid "Leave these settings as default unless you know what you are doing."
-msgstr "除非你了解相关设置，否则请保持默认值。"
+msgid "Below this signal level DAWN treats the connection as poor and asks the client to move to a better access point."
+msgstr "低于该信号电平时，DAWN 会把连接视为较差，并请求客户端切换到更好的接入点。"
 
 msgid "Link Rate"
 msgstr "链路速率"
