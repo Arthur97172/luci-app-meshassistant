@@ -143,7 +143,7 @@ msgstr ""
 msgid "Client Roaming (802.11k/v)"
 msgstr ""
 
-msgid "Let DAWN steer clients to the strongest access point. Requires a full wpad build (wpad-mbedtls, wpad-openssl, wpad-wolfssl or a wpad-mesh variant); wpad-basic has no 802.11v support and roaming is left off."
+msgid "Let DAWN steer clients to the strongest access point. Requires a full wpad build; wpad-basic lacks 802.11v, so roaming stays off."
 msgstr ""
 
 msgid "Client roaming is on, but this wpad build lacks 802.11v. Install a full wpad build or turn roaming off."

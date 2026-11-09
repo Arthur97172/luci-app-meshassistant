@@ -1183,7 +1183,7 @@ return view.extend({
 			addSpectrumHint(s, radio);
 		}
 
-		o = s.taboption('advanced', form.Flag, 'kvr', _('Client Roaming (802.11k/v)'), _('Let DAWN steer clients to the strongest access point. Requires a full wpad build (wpad-mbedtls, wpad-openssl, wpad-wolfssl or a wpad-mesh variant); wpad-basic has no 802.11v support and roaming is left off.'));
+		o = s.taboption('advanced', form.Flag, 'kvr', _('Client Roaming (802.11k/v)'), _('Let DAWN steer clients to the strongest access point. Requires a full wpad build; wpad-basic lacks 802.11v, so roaming stays off.'));
 		o.default = '0';
 
 		o = s.taboption('advanced', form.Value, 'mobility_domain', _('Mobility Domain'));
