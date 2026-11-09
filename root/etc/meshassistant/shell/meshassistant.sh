@@ -2399,6 +2399,141 @@ link_info() {
         done
 }
 
+# Devices attached to this router, one line each for the "Connected Devices"
+# section of the status page:
+#   client <MAC> <iface> <hostname|-> <IPv4|-> <signal|dBm|->
+#
+# The AP interfaces and the LAN ports of the bridge are the local attachment
+# points; bridge entries learned through bat0 belong to another mesh node and
+# are left out.  A wireless station is also in the bridge table, so the
+# station data is collected first and wins over the port entry.  Hostnames
+# come from the DHCP lease file when this device is the server; every other
+# node asks the LAN gateway, where the server's dnsmasq publishes them, with
+# a reverse lookup.  Only wireless stations report a signal.
+client_info() {
+    local br gw port_no iface port mac ip name signal
+    local -a macs=()
+    local -A port_iface=() iface_by_mac=() signal_by_mac=() known_mac=()
+    local -A ip_by_mac=() name_by_mac=()
+
+    br=$(lan_device)
+
+    # brctl prints decimal port numbers; sysfs reports them in hex.  Translate
+    # the port number back to the interface the device is attached to.
+    for iface in /sys/class/net/"$br"/brif/*; do
+        [ -e "$iface" ] || continue
+        iface=${iface##*/}
+        port_no=$(cat "/sys/class/net/$br/brif/$iface/port_no" 2>/dev/null)
+        [ -n "$port_no" ] || continue
+        port_iface[$((port_no))]=$iface
+    done
+
+    if command -v iw >/dev/null 2>&1; then
+        for port in "${!port_iface[@]}"; do
+            iface=${port_iface[$port]}
+            hardif_is_wireless "$iface" || continue
+            while read -r mac signal; do
+                [ -n "$mac" ] || continue
+                mac=${mac,,}
+                if [ -z "${known_mac[$mac]:-}" ]; then
+                    known_mac[$mac]=1
+                    macs+=("$mac")
+                    iface_by_mac[$mac]=$iface
+                    signal_by_mac[$mac]=$signal
+                elif [ "$signal" -gt "${signal_by_mac[$mac]}" ] 2>/dev/null; then
+                    iface_by_mac[$mac]=$iface
+                    signal_by_mac[$mac]=$signal
+                fi
+            done < <(iw dev "$iface" station dump 2>/dev/null | awk '
+                /^Station / { mac = $2; next }
+                /^[[:space:]]*signal:/ { if (mac != "") print mac, $2; mac = "" }
+            ')
+        done
+    fi
+
+    # Wired clients: bridge entries on a LAN port.  The bat0 port carries the
+    # devices of other mesh nodes, and AP ports repeat the station addresses.
+    if command -v brctl >/dev/null 2>&1; then
+        while read -r port mac; do
+            iface=${port_iface[$port]:-}
+            [ -n "$iface" ] || continue
+            [ "$iface" = "bat0" ] && continue
+            hardif_is_wireless "$iface" && continue
+            mac=${mac,,}
+            [ -n "${known_mac[$mac]:-}" ] && continue
+            known_mac[$mac]=1
+            macs+=("$mac")
+            iface_by_mac[$mac]=$iface
+        done < <(brctl showmacs "$br" 2>/dev/null | awk '$3 == "no" { print $1, $2 }')
+    fi
+
+    if [ -r /tmp/dhcp.leases ]; then
+        while read -r _ mac ip name _; do
+            [ "$name" = "*" ] && continue
+            mac=${mac,,}
+            name=$(printf '%s' "$name" | tr -cd 'A-Za-z0-9._-')
+            [ -n "$name" ] && name_by_mac[$mac]=$name
+        done < /tmp/dhcp.leases
+    fi
+
+    while read -r ip mac; do
+        mac=${mac,,}
+        [ -n "${ip_by_mac[$mac]:-}" ] || ip_by_mac[$mac]=$ip
+    done < <(ip -4 neigh show dev "$br" 2>/dev/null \
+        | awk '$2 == "lladdr" { print $1, $3 }')
+
+    # Nodes have no lease file; the server's dnsmasq answers reverse lookups
+    # for its leased clients.  Prefer the configured LAN gateway, fall back to
+    # the default route through the LAN device.
+    gw=$(uci -q get network.lan.gateway)
+    case "$gw" in
+        [0-9]*.[0-9]*.[0-9]*.[0-9]*) ;;
+        *)
+            gw=$(ip -4 route show default 2>/dev/null | awk -v br="$br" '
+                {
+                    via = ""
+                    for (i = 1; i < NF; i++) {
+                        if ($i == "via") via = $(i + 1)
+                        if ($i == "dev" && $(i + 1) == br && via != "") {
+                            print via
+                            exit
+                        }
+                    }
+                }')
+            ;;
+    esac
+
+    for mac in "${macs[@]}"; do
+        ip=${ip_by_mac[$mac]:-}
+        name=${name_by_mac[$mac]:-}
+        if [ -z "$name" ] && [ -n "$ip" ] && [ -n "$gw" ]; then
+            name=$(client_reverse_name "$ip" "$gw")
+        fi
+        printf 'client %s %s %s %s %s\n' \
+            "$mac" "${iface_by_mac[$mac]}" "${name:--}" "${ip:--}" \
+            "${signal_by_mac[$mac]:--}"
+    done | sort -k3,3 -k2,2
+}
+
+# The hostname the server's dnsmasq has for a leased address, with the local
+# search domain dropped.  A node does not run the DHCP server itself, so this
+# is the only way it can name a client.
+client_reverse_name() {
+    local name
+
+    command -v nslookup >/dev/null 2>&1 || return 0
+
+    if command -v timeout >/dev/null 2>&1; then
+        name=$(timeout 2 nslookup "$1" "$2" 2>/dev/null)
+    else
+        name=$(nslookup "$1" "$2" 2>/dev/null)
+    fi
+    name=$(printf '%s\n' "$name" | sed -n 's/.*name = //p' | head -n 1)
+    name=${name%.lan}
+    name=$(printf '%s' "$name" | tr -cd 'A-Za-z0-9._-')
+    printf '%s\n' "$name"
+}
+
 # Truncate the run log shown by the "Run Log" tab.  Keep the file so the
 # LuCI page can read it without treating a missing file as an error.
 clear_log() {
@@ -2867,6 +3002,11 @@ fi
 
 if [ "$1" = "linkinfo" ]; then
     link_info
+    exit 0
+fi
+
+if [ "$1" = "clients" ]; then
+    client_info
     exit 0
 fi
 

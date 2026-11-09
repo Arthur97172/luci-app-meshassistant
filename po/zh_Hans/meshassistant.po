@@ -435,3 +435,24 @@ msgstr "删除命令执行失败。"
 
 msgid "The restore command failed."
 msgstr "恢复命令执行失败。"
+
+msgid "Connected Devices"
+msgstr "联机信息"
+
+msgid "Hostname"
+msgstr "主机名"
+
+msgid "MAC Address"
+msgstr "MAC 地址"
+
+msgid "IPv4 Address"
+msgstr "IPv4 地址"
+
+msgid "Number of Connected Devices: %d"
+msgstr "已连接设备数：%d"
+
+msgid "Unable to read the connected devices."
+msgstr "无法读取联机信息。"
+
+msgid "No connected devices found."
+msgstr "未发现已连接设备。"

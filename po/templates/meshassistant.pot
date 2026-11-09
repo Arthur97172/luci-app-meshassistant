@@ -433,3 +433,24 @@ msgstr ""
 
 msgid "The restore command failed."
 msgstr ""
+
+msgid "Connected Devices"
+msgstr ""
+
+msgid "Hostname"
+msgstr ""
+
+msgid "MAC Address"
+msgstr ""
+
+msgid "IPv4 Address"
+msgstr ""
+
+msgid "Number of Connected Devices: %d"
+msgstr ""
+
+msgid "Unable to read the connected devices."
+msgstr ""
+
+msgid "No connected devices found."
+msgstr ""

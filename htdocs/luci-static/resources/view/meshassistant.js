@@ -481,6 +481,70 @@ function statusTable(rows) {
 	return E('div', { 'class': 'meshassistant-status-scroll' }, [ table ]);
 }
 
+function clientsTable(rows) {
+	const titles = [
+		_('Hostname'),
+		_('Interface'),
+		_('MAC Address'),
+		_('IPv4 Address'),
+		_('Signal Strength')
+	];
+
+	const table = E('div', {
+		'class': 'table meshassistant-status-table meshassistant-clients-table'
+	}, [
+		E('div', { 'class': 'tr table-titles' },
+			titles.map(function(title) {
+				return E('div', { 'class': 'th' }, [ title ]);
+			}))
+	]);
+
+	for (const row of rows) {
+		table.appendChild(E('div', { 'class': 'tr' }, [
+			statusCell(titles[0], row.hostname, 'meshassistant-cell-host'),
+			statusCell(titles[1], row.iface),
+			statusCell(titles[2], row.mac),
+			statusCell(titles[3], row.ip),
+			statusCell(titles[4], row.signal == null ? '' : row.signal + ' dBm')
+		]));
+	}
+
+	return E('div', { 'class': 'meshassistant-status-scroll' }, [ table ]);
+}
+
+/*
+ * Devices attached to this router, below the Mesh Status table.  A failed
+ * read is reported on its own so it cannot hide the mesh status above it.
+ */
+function renderClients(result) {
+	const list = (result && result.clients) || [];
+	const children = [
+		E('h3', {}, [ _('Connected Devices') ])
+	];
+
+	if (result && !result.ok) {
+		children.push(E('div', { 'class': 'alert-message error' }, [
+			_('Unable to read the connected devices.')
+		]));
+	}
+	else {
+		children.push(E('div', { 'class': 'cbi-section-descr' }, [
+			E('strong', {}, [
+				_('Number of Connected Devices: %d').format(list.length)
+			])
+		]));
+
+		if (list.length === 0)
+			children.push(E('div', { 'class': 'cbi-section-descr' }, [
+				_('No connected devices found.')
+			]));
+		else
+			children.push(clientsTable(list));
+	}
+
+	return E('div', { 'class': 'cbi-section' }, children);
+}
+
 /*
  * Point out when the hardware could do 802.11k/v but client roaming is still
  * off, and when the switch is on while something needed for steering is
@@ -537,27 +601,29 @@ function renderStatus(status, capabilities) {
 		children.push(E('div', { 'class': 'alert-message error' }, [
 			_('Unable to read mesh status.')
 		]));
-
-		return E('div', { 'class': 'cbi-section' }, children);
-	}
-
-	children.push(statusSubtitle(_('Remote Hosts')));
-
-	if (rows.length === 0) {
-		children.push(E('div', { 'class': 'cbi-section-descr' }, [
-			_('No neighbor nodes found.')
-		]));
 	}
 	else {
-		children.push(statusTable(rows));
+		children.push(statusSubtitle(_('Remote Hosts')));
+
+		if (rows.length === 0) {
+			children.push(E('div', { 'class': 'cbi-section-descr' }, [
+				_('No neighbor nodes found.')
+			]));
+		}
+		else {
+			children.push(statusTable(rows));
+		}
+
+		if (status.local && status.local.length) {
+			children.push(statusSubtitle(_('Local Host'), meshRoleLabel(status.role)));
+			children.push(statusTable(status.local));
+		}
 	}
 
-	if (status.local && status.local.length) {
-		children.push(statusSubtitle(_('Local Host'), meshRoleLabel(status.role)));
-		children.push(statusTable(status.local));
-	}
-
-	return E('div', { 'class': 'cbi-section' }, children);
+	return E('div', {}, [
+		E('div', { 'class': 'cbi-section' }, children),
+		renderClients(status.clients)
+	]);
 }
 
 /*
@@ -570,9 +636,14 @@ function readMeshStatus() {
 		fs.exec(BATCTL, [ 'n' ]).catch(() => null),
 		fs.read(PEERS_FILE).catch(() => ''),
 		fs.exec(SCRIPT, [ 'linkinfo' ]).catch(() => null),
-		fs.exec(BATCTL, [ 'o' ]).catch(() => null)
-	]).then(function([ reply, peers, linkReply, originatorReply ]) {
-		return utils.parseStatus(reply, peers, linkReply, originatorReply);
+		fs.exec(BATCTL, [ 'o' ]).catch(() => null),
+		fs.exec(SCRIPT, [ 'clients' ]).catch(() => null)
+	]).then(function([ reply, peers, linkReply, originatorReply, clientsReply ]) {
+		const status = utils.parseStatus(reply, peers, linkReply, originatorReply);
+
+		status.clients = utils.parseClients(clientsReply);
+
+		return status;
 	});
 }
 
@@ -717,7 +788,7 @@ return view.extend({
 	freqList: [],
 	countryList: [],
 	wiredPorts: [],
-	status: { ok: true, rows: [] },
+	status: { ok: true, rows: [], clients: { ok: true, clients: [] } },
 	capabilities: null,
 	logText: '',
 	backups: [],
@@ -737,9 +808,10 @@ return view.extend({
 				fs.exec(SCRIPT, [ 'linkinfo' ]).catch(() => null),
 				fs.read(LOG_FILE).catch(() => ''),
 				fs.exec(BATCTL, [ 'o' ]).catch(() => null),
-				fs.exec(SCRIPT, [ 'capabilities' ]).catch(() => null)
+				fs.exec(SCRIPT, [ 'capabilities' ]).catch(() => null),
+				fs.exec(SCRIPT, [ 'clients' ]).catch(() => null)
 			]);
-		}).then(([ devices, reply, lanStatus, peers, linkReply, logText, originatorReply, capsReply ]) => {
+		}).then(([ devices, reply, lanStatus, peers, linkReply, logText, originatorReply, capsReply, clientsReply ]) => {
 			this.radios = devices.length
 				? radioOptions(devices)
 				: uci.sections('wireless', 'wifi-device').map(function(s) {
@@ -764,6 +836,7 @@ return view.extend({
 				this.wiredPorts.unshift([ current, current ]);
 
 			this.status = utils.parseStatus(reply, peers, linkReply, originatorReply);
+			this.status.clients = utils.parseClients(clientsReply);
 			this.capabilities = parseCapabilities(capsReply);
 			this.logText = logText || '';
 			this.lanDefaults = utils.lanDefaults(lanStatus, uci.get('network', 'lan') || {});

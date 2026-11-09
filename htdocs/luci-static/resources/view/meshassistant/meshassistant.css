@@ -179,6 +179,14 @@ html.dark .meshassistant-note {
 }
 
 /*
+ * The Connected Devices table has five columns, so it needs less room than
+ * the thirteen-column Mesh Status table above it.
+ */
+.meshassistant-status-scroll .meshassistant-status-table.meshassistant-clients-table {
+	min-width: 36rem;
+}
+
+/*
  * The theme pads every cell for its two- or three-column tables; with
  * thirteen columns that padding alone takes more room than the values.  Use
  * a tighter padding on this table only.

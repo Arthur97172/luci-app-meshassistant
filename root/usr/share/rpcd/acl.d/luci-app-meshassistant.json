@@ -12,6 +12,7 @@
 				"/usr/sbin/batctl n": [ "exec" ],
 				"/usr/sbin/batctl o": [ "exec" ],
 				"/etc/meshassistant/shell/meshassistant.sh linkinfo": [ "exec" ],
+				"/etc/meshassistant/shell/meshassistant.sh clients": [ "exec" ],
 				"/etc/meshassistant/shell/meshassistant.sh capabilities": [ "exec" ],
 				"/etc/meshassistant/shell/meshassistant.sh backup list": [ "exec" ],
 				"/tmp/meshassistant_peers": [ "read" ],

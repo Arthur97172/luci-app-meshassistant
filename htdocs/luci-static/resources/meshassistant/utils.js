@@ -861,6 +861,74 @@ return baseclass.extend({
 		return rows;
 	},
 
+	/*
+	 * "clients" prints one line per device attached to this router:
+	 *   client <MAC> <iface> <hostname|-> <IPv4|-> <signal|dBm|->
+	 * A device associated with more than one AP interface (MLO) is kept once,
+	 * with the link that reports the strongest signal.  The section is sorted
+	 * by interface, then hostname (unnamed devices last), then MAC, so the
+	 * rows stay in place between refreshes.
+	 */
+	parseClients(reply) {
+		const ok = !!(reply && reply.code === 0);
+		const text = (ok && reply.stdout) || '';
+		const byMac = {};
+		const macs = [];
+
+		for (const line of text.split(/\r?\n/)) {
+			const parts = line.trim().split(/\s+/);
+
+			if (parts.length < 6 || parts[0] !== 'client')
+				continue;
+
+			const mac = this.macKey(parts[1]);
+
+			if (!mac)
+				continue;
+
+			const signal = /^-?\d+$/.test(parts[5]) ? Number(parts[5]) : null;
+			const entry = {
+				mac: mac,
+				iface: clean(parts[2]),
+				hostname: clean(parts[3]) === '-' ? '' : clean(parts[3]),
+				ip: parts[4] === '-' ? '' : this.ipv4(parts[4]),
+				signal: signal
+			};
+			const previous = byMac[mac];
+
+			if (!previous) {
+				byMac[mac] = entry;
+				macs.push(mac);
+			}
+			else if (signal != null &&
+			         (previous.signal == null || signal > previous.signal)) {
+				byMac[mac] = entry;
+			}
+		}
+
+		const clients = macs.map(function(mac) {
+			return byMac[mac];
+		});
+
+		clients.sort(function(a, b) {
+			if (a.iface !== b.iface)
+				return a.iface < b.iface ? -1 : 1;
+
+			if (!!a.hostname !== !!b.hostname)
+				return a.hostname ? -1 : 1;
+
+			const ah = a.hostname.toLowerCase();
+			const bh = b.hostname.toLowerCase();
+
+			if (ah !== bh)
+				return ah < bh ? -1 : 1;
+
+			return a.mac < b.mac ? -1 : (a.mac > b.mac ? 1 : 0);
+		});
+
+		return { ok: ok, clients: clients };
+	},
+
 	parseStatus(reply, peerText, linkReply, originatorReply) {
 		if (!reply || reply.code !== 0)
 			return { ok: false, rows: [], local: [], role: '' };
