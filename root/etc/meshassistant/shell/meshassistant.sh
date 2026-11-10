@@ -1681,10 +1681,16 @@ setup_mesh_radio() {
         uci set wireless.mesh_$CURRENT_RADIO.mcast_rate='24000'
         uci set wireless.mesh_$CURRENT_RADIO.disabled='0'  # ?? Force-enable mesh AP
 
-        # Apply encryption settings for mesh
+        # Apply encryption settings for mesh.  The key is a single uci
+        # argument, so it has to stay quoted: a passphrase may contain spaces
+        # and word splitting would store a truncated key while the section is
+        # committed as encrypted.
         if [ "$ENCRYPTION_ENABLED" = 1 ] && [ ! -z "$NETWORK_KEY" ]; then
             uci set wireless.mesh_$CURRENT_RADIO.encryption='sae'
-            uci set wireless.mesh_$CURRENT_RADIO.key=$NETWORK_KEY
+            if ! uci set "wireless.mesh_$CURRENT_RADIO.key=$NETWORK_KEY"; then
+                echo "Error: unable to store the mesh password; the mesh AP was not configured."
+                return 1
+            fi
         else
             uci set wireless.mesh_$CURRENT_RADIO.encryption='none'
         fi

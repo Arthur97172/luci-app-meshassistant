@@ -113,7 +113,7 @@ jobs:
 
   release:
     needs: build
-    if: ${{ !cancelled() }}
+    if: ${{ success() }}
     runs-on: ubuntu-latest
 
     steps:
@@ -146,8 +146,11 @@ jobs:
       - name: Verify artifacts
         run: |
           mkdir -p artifacts
-          if ! ls artifacts/* 1>/dev/null 2>&1; then
-            echo "没有编译产物，终止构建"
+          missing=""
+          compgen -G 'artifacts/*.ipk' >/dev/null || missing="$missing .ipk"
+          compgen -G 'artifacts/*.apk' >/dev/null || missing="$missing .apk"
+          if [ -n "$missing" ]; then
+            echo "缺少构建产物：$missing；保留现有 Release，不发布不完整的版本"
             exit 1
           fi
           ls -lh artifacts/
