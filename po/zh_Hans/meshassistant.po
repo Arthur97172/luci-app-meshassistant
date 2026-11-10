@@ -154,6 +154,9 @@ msgstr "漫游已开启，但当前 wpad 不支持 802.11v。请安装完整版 
 msgid "Client roaming is on, but DAWN is not installed, so clients are not steered."
 msgstr "漫游已开启，但 DAWN 未安装，客户端不会被引导。"
 
+msgid "Client roaming is on, but the DAWN service is not running, so clients are not steered."
+msgstr "漫游已开启，但 DAWN 服务未在运行，客户端不会被引导。"
+
 msgid "This device supports 802.11k/v; client roaming can be enabled in Advanced Settings."
 msgstr "这台设备支持 802.11k/v，可在「高级设置」中开启客户端漫游。"
 

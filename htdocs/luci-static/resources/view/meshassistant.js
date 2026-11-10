@@ -573,6 +573,11 @@ function roamingHint(caps) {
 			_('Client roaming is on, but DAWN is not installed, so clients are not steered.')
 		]);
 
+	if (caps.kvr && caps.dawn && caps.dawn_running === false)
+		return E('div', { 'class': 'alert-message warning' }, [
+			_('Client roaming is on, but the DAWN service is not running, so clients are not steered.')
+		]);
+
 	if (!caps.kvr && caps.wnm && caps.dawn)
 		return E('div', { 'class': 'alert-message info' }, [
 			_('This device supports 802.11k/v; client roaming can be enabled in Advanced Settings.')
@@ -617,7 +622,9 @@ function renderStatus(status, capabilities) {
 		]));
 	}
 
-	const hint = roamingHint(capabilities);
+	/* A disabled mesh has DAWN stopped with it, so capability advice there
+	 * would only repeat what the notice above already says. */
+	const hint = status.active === false ? null : roamingHint(capabilities);
 
 	if (hint)
 		children.push(hint);
@@ -1556,8 +1563,17 @@ return view.extend({
 
 				statusBusy = true;
 
-				return readMeshStatus().then((next) => {
+				/* DAWN can stop between page loads, so the capability probe
+				 * runs on the same timer as the status read. */
+				return Promise.all([
+					readMeshStatus(),
+					fs.exec(SCRIPT, [ 'capabilities' ]).catch(() => null)
+				]).then(([ next, capsReply ]) => {
 					const previous = this.status;
+					const caps = parseCapabilities(capsReply);
+
+					if (caps)
+						this.capabilities = caps;
 
 					if (next.ok) {
 						next.updated = Date.now();

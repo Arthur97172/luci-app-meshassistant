@@ -152,6 +152,9 @@ msgstr ""
 msgid "Client roaming is on, but DAWN is not installed, so clients are not steered."
 msgstr ""
 
+msgid "Client roaming is on, but the DAWN service is not running, so clients are not steered."
+msgstr ""
+
 msgid "This device supports 802.11k/v; client roaming can be enabled in Advanced Settings."
 msgstr ""
 

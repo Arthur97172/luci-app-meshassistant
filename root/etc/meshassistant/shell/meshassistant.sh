@@ -22,6 +22,15 @@ MESHASSISTANT_LEASES=/tmp/dhcp.leases
 # while so repeated listings do not repeat the lookups.
 MESHASSISTANT_RDNS_CACHE=${MESHASSISTANT_RDNS_CACHE:-/tmp/meshassistant_rdns}
 MESHASSISTANT_RDNS_TTL=${MESHASSISTANT_RDNS_TTL:-300}
+# Client listing.  A client that roams to another mesh node leaves a station
+# entry behind on the old access point until hostapd drops it after its own
+# inactivity timeout.  That entry keeps the old signal, so listing it made the
+# device look connected to two nodes at once; a station whose last frame
+# exchange is older than this many seconds is left out of the listing.
+MESHASSISTANT_STATION_INACTIVE_MAX=${MESHASSISTANT_STATION_INACTIVE_MAX:-120}
+# The network class directory, overridable so the tests can point it at a fake
+# tree.  On a running system it is the kernel's own /sys/class/net.
+MESHASSISTANT_SYS_CLASS_NET=${MESHASSISTANT_SYS_CLASS_NET:-/sys/class/net}
 MESHASSISTANT_LOG=/tmp/meshassistant.log
 # Keep the run log bounded: /tmp is RAM-backed and the file is appended to by
 # every detached run and by the backup actions, so trim the oldest part once
@@ -1319,15 +1328,24 @@ wnm_supported() {
 # Read-only report for the status page.  It runs the same wpad probe as an
 # apply, so the hint the page shows matches what enabling client roaming would
 # actually do: kvr is the roaming switch, wnm whether the installed wpad build
-# has 802.11v, dawn whether DAWN is installed.
+# has 802.11v, dawn whether DAWN is installed, dawn_running whether its procd
+# instance is up.
 capabilities() {
-    local kvr=0 wnm=0 dawn=0
+    local kvr=0 wnm=0 dawn=0 dawn_running=0
 
     [ "$(uci -q get meshassistant.config.kvr)" = 1 ] && kvr=1
     wnm_supported && wnm=1
-    [ -x /etc/init.d/dawn ] && dawn=1
+    if [ -x /etc/init.d/dawn ]; then
+        dawn=1
+        # DAWN has been crashing under load; an installed but stopped service
+        # steers nothing, so the status page has to see that state.
+        if /etc/init.d/dawn status >/dev/null 2>&1; then
+            dawn_running=1
+        fi
+    fi
 
-    printf 'kvr=%s\nwnm=%s\ndawn=%s\n' "$kvr" "$wnm" "$dawn"
+    printf 'kvr=%s\nwnm=%s\ndawn=%s\ndawn_running=%s\n' \
+        "$kvr" "$wnm" "$dawn" "$dawn_running"
 }
 
 # Write the settings shared by every regular WiFi AP.  $1 is the UCI section
@@ -2466,7 +2484,7 @@ daemon_meshassistant() {
 # A mac80211 netdev exposes a "phy80211" link in sysfs; an Ethernet port used
 # for wired backhaul does not.
 hardif_is_wireless() {
-    [ -e "/sys/class/net/$1/phy80211" ]
+    [ -e "$MESHASSISTANT_SYS_CLASS_NET/$1/phy80211" ]
 }
 
 # Frequency, channel utilization and signal of the active mesh links.  "batctl
@@ -2559,7 +2577,10 @@ link_info() {
 # The AP interfaces and the LAN ports of the bridge are the local attachment
 # points; bridge entries learned through bat0 belong to another mesh node and
 # are left out.  A wireless station is also in the bridge table, so the
-# station data is collected first and wins over the port entry.
+# station data is collected first and wins over the port entry.  A station
+# that has been silent past MESHASSISTANT_STATION_INACTIVE_MAX is skipped:
+# after a client roams away the old AP keeps a stale entry, with the signal
+# from before the move, until hostapd drops it.
 #
 # Hostnames come from three places, in decreasing order of authority: this
 # device's own lease file and static reservations (local_names), the name
@@ -2578,10 +2599,10 @@ client_info() {
 
     # brctl prints decimal port numbers; sysfs reports them in hex.  Translate
     # the port number back to the interface the device is attached to.
-    for iface in /sys/class/net/"$br"/brif/*; do
+    for iface in "$MESHASSISTANT_SYS_CLASS_NET/$br"/brif/*; do
         [ -e "$iface" ] || continue
         iface=${iface##*/}
-        port_no=$(cat "/sys/class/net/$br/brif/$iface/port_no" 2>/dev/null)
+        port_no=$(cat "$MESHASSISTANT_SYS_CLASS_NET/$br/brif/$iface/port_no" 2>/dev/null)
         [ -n "$port_no" ] || continue
         port_iface[$((port_no))]=$iface
     done
@@ -2602,9 +2623,15 @@ client_info() {
                     iface_by_mac[$mac]=$iface
                     signal_by_mac[$mac]=$signal
                 fi
-            done < <(iw dev "$iface" station dump 2>/dev/null | awk '
-                /^Station / { mac = $2; next }
-                /^[[:space:]]*signal:/ { if (mac != "") print mac, $2; mac = "" }
+            done < <(iw dev "$iface" station dump 2>/dev/null | awk \
+                -v max="$((MESHASSISTANT_STATION_INACTIVE_MAX * 1000))" '
+                /^Station / { mac = $2; inactive = 0; next }
+                /^[[:space:]]*inactive time:/ { inactive = $3; next }
+                /^[[:space:]]*signal:/ {
+                    if (mac != "" && inactive <= max)
+                        print mac, $2
+                    mac = ""
+                }
             ')
         done
     fi
