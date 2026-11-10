@@ -163,6 +163,19 @@ html.dark .meshassistant-note {
 }
 
 /*
+ * Space between the Mesh Status card and the Connected Devices card.  Argon
+ * separates the stacked cards of a view with a flex column gap of
+ * --field-gap, which is also the gap luci-app-tasks shows between its Status
+ * and "Run a task once, right now" cards.  Use the same mechanism and value
+ * here; themes that do not define the variable get 1rem.
+ */
+.meshassistant-status-sections {
+	display: flex;
+	flex-direction: column;
+	gap: var(--field-gap, 1rem);
+}
+
+/*
  * Mesh Status table.
  *
  * Thirteen columns need more width than a narrow window offers.  The scroll

@@ -620,7 +620,7 @@ function renderStatus(status, capabilities) {
 		}
 	}
 
-	return E('div', {}, [
+	return E('div', { 'class': 'meshassistant-status-sections' }, [
 		E('div', { 'class': 'cbi-section' }, children),
 		renderClients(status.clients)
 	]);
