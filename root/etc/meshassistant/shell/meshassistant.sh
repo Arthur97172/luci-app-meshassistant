@@ -9,6 +9,13 @@ MESHASSISTANT_PORT=47123
 MESHASSISTANT_PEERS=/tmp/meshassistant_peers
 MESHASSISTANT_PEER_MAX_AGE=120
 MESHASSISTANT_ANNOUNCE_INTERVAL=10
+# Client names.  Only the DHCP server knows its clients' hostnames (from the
+# lease file and the static host reservations); the other mesh devices run no
+# dnsmasq and lose a quiet client from their ARP table, so the server
+# broadcasts its name table and every receiver keeps it until it expires.
+MESHASSISTANT_NAMES=/tmp/meshassistant_names
+MESHASSISTANT_NAME_MAX_AGE=120
+MESHASSISTANT_LEASES=/tmp/dhcp.leases
 MESHASSISTANT_LOG=/tmp/meshassistant.log
 # Keep the run log bounded: /tmp is RAM-backed and the file is appended to by
 # every detached run and by the backup actions, so trim the oldest part once
@@ -2004,6 +2011,50 @@ local_load() {
     printf '%s\n' "$load"
 }
 
+# The client names this device knows: the DHCP server's lease file plus the
+# static host reservations of its dhcp config.  A reservation names a device
+# that is often asleep and has no active lease, so the reservation lines come
+# after the lease lines for the same MAC; the consumer stores every line and a
+# later line replaces an earlier one, which lets the administrator's name win.
+#   <MAC> <IPv4|-> <hostname>
+local_names() {
+    local section mac ip name
+
+    if [ -r "$MESHASSISTANT_LEASES" ]; then
+        while read -r _ mac ip name _; do
+            [ -n "$mac" ] || continue
+            [ "$name" = '*' ] && continue
+            mac=${mac,,}
+            name=$(printf '%s' "$name" | tr -cd 'A-Za-z0-9._-')
+            [ -n "$name" ] || continue
+            case "$ip" in
+                ''|*[!0-9.]*) ip='-' ;;
+            esac
+            printf '%s %s %s\n' "$mac" "$ip" "$name"
+        done < "$MESHASSISTANT_LEASES"
+    fi
+
+    uci -q show dhcp 2>/dev/null \
+        | sed -n 's/^\(dhcp\.[^=]*\)=host$/\1/p' \
+        | while read -r section; do
+            [ -n "$section" ] || continue
+            mac=$(uci -q get "$section.mac")
+            mac=$(printf '%s' "$mac" | tr 'A-F' 'a-f')
+            case "$mac" in
+                [0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;;
+                *) continue ;;
+            esac
+            name=$(uci -q get "$section.name")
+            name=$(printf '%s' "$name" | tr -cd 'A-Za-z0-9._-')
+            [ -n "$name" ] || continue
+            ip=$(uci -q get "$section.ip")
+            case "$ip" in
+                ''|*[!0-9.]*) ip='-' ;;
+            esac
+            printf '%s %s %s\n' "$mac" "$ip" "$name"
+        done
+}
+
 announce_identity() {
     local ip brd hostname load mac lanmac selected speeds iface state speed
     ip=$(lan_ipv4)
@@ -2083,16 +2134,41 @@ announce_identity() {
     done
 }
 
+# Broadcast the client names known to this device.  A receiving mesh device
+# uses them for clients it cannot name itself; a device that has been quiet
+# for a while has no ARP entry on that node and its lease exists only on the
+# server, so a reverse lookup cannot name it either.  One datagram carries
+# every named client:
+#   meshassistant/8 <MAC> <IPv4|-> <hostname>
+announce_names() {
+    local brd lines
+
+    lines=$(local_names)
+    [ -n "$lines" ] || return 0
+
+    brd=$(lan_broadcast)
+    [ -n "$brd" ] || brd=255.255.255.255
+
+    printf '%s\n' "$lines" \
+        | sed 's/^/meshassistant\/8 /' \
+        | socat -u - "UDP-DATAGRAM:$brd:$MESHASSISTANT_PORT,broadcast" 2>/dev/null
+}
+
 # Announcement file locking.
 #
 # socat starts one "peer" process per datagram and the daemon prunes the file
 # while those processes append to it, so several processes write
 # "$MESHASSISTANT_PEERS" at the same time.  Every write takes the same lock on
-# fd 9, which the kernel releases when the writer closes the descriptor:
+# fd 9, which the kernel releases when the writer closes the descriptor.  The
+# client-name table "$MESHASSISTANT_NAMES" follows the same protocol with its
+# own lock file; the two files are never locked at the same time, so both use
+# descriptor 9.
 #
 #   peer_append   one complete line, one printf, lock held
 #   prune_peers   the whole awk + rename rewrite, lock held
-#   daemon start  emptying the file, lock held
+#   name_append   one complete line, one printf, lock held
+#   prune_names   the whole awk + rename rewrite, lock held
+#   daemon start  emptying the files, lock held
 #
 # With the rewrite excluded from the append window no announcement can land in
 # a renamed-away inode, and with two appends excluded from each other no two
@@ -2123,6 +2199,17 @@ peer_append() {
     } 9>>"$MESHASSISTANT_PEERS.lock"
 }
 
+lock_names() {
+    flock -x 9 2>/dev/null || :
+}
+
+name_append() {
+    {
+        lock_names
+        printf '%s' "$1"$'\n' >>"$MESHASSISTANT_NAMES"
+    } 9>>"$MESHASSISTANT_NAMES.lock"
+}
+
 # Called by socat for every received datagram; the datagram is on stdin.  A
 # datagram may carry several lines: the newer announcements follow the older
 # ones so that receivers which only understand the older formats keep working.
@@ -2133,6 +2220,11 @@ peer_append() {
 # line and newer has the medium of the hardif, only a version 6 line has the
 # link speed its device measures on that hardif and only a version 7 line has
 # the hardif name.
+#
+# A version 8 line is a client name, not a peer identity: it is stored in
+# "$MESHASSISTANT_NAMES" as "<epoch> <client MAC> <IPv4|-> <hostname>" and
+# never in the peer file.  Older receivers ignore the version and simply
+# cannot name clients they cannot reach themselves.
 record_peer() {
     local proto rest mac lanmac ip hostname load state kind speed iface ts count
     while read -r proto rest || [ -n "$proto" ]; do
@@ -2183,6 +2275,10 @@ record_peer() {
                 [ "$count" -ge 9 ] || continue
                 mac=$1 lanmac=$2 ip=$3 hostname=$4 load=$5 state=$6 kind=$7
                 speed=$8 iface=$9
+                ;;
+            meshassistant/8)
+                [ "$count" -ge 3 ] || continue
+                mac=$1 ip=$2 hostname=$3
                 ;;
             *) continue ;;
         esac
@@ -2252,7 +2348,9 @@ record_peer() {
         esac
 
         ts=$(date +%s)
-        if [ "$proto" = 'meshassistant/7' ]; then
+        if [ "$proto" = 'meshassistant/8' ]; then
+            name_append "$ts $mac ${ip:--} $hostname"
+        elif [ "$proto" = 'meshassistant/7' ]; then
             peer_append "$ts $mac ${ip:--} $hostname ${load:--} $lanmac $state $kind $speed $iface"
         elif [ "$proto" = 'meshassistant/6' ]; then
             peer_append "$ts $mac ${ip:--} $hostname ${load:--} $lanmac $state $kind $speed"
@@ -2291,6 +2389,24 @@ prune_peers() {
     } 9>>"$MESHASSISTANT_PEERS.lock"
 }
 
+# Same rewrite for the client-name table, under its own lock.
+prune_names() {
+    local now tmp
+    [ -f "$MESHASSISTANT_NAMES" ] || return 0
+    now=$(date +%s)
+    tmp="$MESHASSISTANT_NAMES.$$"
+    {
+        lock_names
+        if awk -v now="$now" -v max="$MESHASSISTANT_NAME_MAX_AGE" \
+                '($1 + 0) >= now - max && ($1 + 0) <= now' \
+                "$MESHASSISTANT_NAMES" >"$tmp" 2>/dev/null; then
+            mv "$tmp" "$MESHASSISTANT_NAMES"
+        else
+            rm -f "$tmp"
+        fi
+    } 9>>"$MESHASSISTANT_NAMES.lock"
+}
+
 daemon_meshassistant() {
     local listener
 
@@ -2303,16 +2419,22 @@ daemon_meshassistant() {
         lock_peers
         : > "$MESHASSISTANT_PEERS"
     } 9>>"$MESHASSISTANT_PEERS.lock"
+    {
+        lock_names
+        : > "$MESHASSISTANT_NAMES"
+    } 9>>"$MESHASSISTANT_NAMES.lock"
     socat -u "UDP-RECVFROM:$MESHASSISTANT_PORT,reuseaddr,fork" \
         "EXEC:/etc/meshassistant/shell/meshassistant.sh peer" >/dev/null 2>&1 &
     listener=$!
 
-    trap "kill $listener 2>/dev/null; rm -f '$MESHASSISTANT_PEERS'; exit 0" INT TERM
-    trap "kill $listener 2>/dev/null; rm -f '$MESHASSISTANT_PEERS'" EXIT
+    trap "kill $listener 2>/dev/null; rm -f '$MESHASSISTANT_PEERS' '$MESHASSISTANT_NAMES'; exit 0" INT TERM
+    trap "kill $listener 2>/dev/null; rm -f '$MESHASSISTANT_PEERS' '$MESHASSISTANT_NAMES'" EXIT
 
     while true; do
         announce_identity
+        announce_names
         prune_peers
+        prune_names
         sleep "$MESHASSISTANT_ANNOUNCE_INTERVAL" &
         wait $!
     done
@@ -2406,15 +2528,20 @@ link_info() {
 # The AP interfaces and the LAN ports of the bridge are the local attachment
 # points; bridge entries learned through bat0 belong to another mesh node and
 # are left out.  A wireless station is also in the bridge table, so the
-# station data is collected first and wins over the port entry.  Hostnames
-# come from the DHCP lease file when this device is the server; every other
-# node asks the LAN gateway, where the server's dnsmasq publishes them, with
-# a reverse lookup.  Only wireless stations report a signal.
+# station data is collected first and wins over the port entry.
+#
+# Hostnames come from three places, in decreasing order of authority: this
+# device's own lease file and static reservations (local_names), the name
+# table the other mesh devices announce (announce_names), and finally a
+# reverse lookup through the LAN gateway for a client that is still unnamed.
+# A device that has none of them keeps the "-" placeholder.  Only wireless
+# stations report a signal.
 client_info() {
     local br gw port_no iface port mac ip name signal
     local -a macs=()
     local -A port_iface=() iface_by_mac=() signal_by_mac=() known_mac=()
     local -A ip_by_mac=() name_by_mac=()
+    local -A ip_local=() name_announced=() ip_announced=()
 
     br=$(lan_device)
 
@@ -2467,20 +2594,39 @@ client_info() {
         done < <(brctl showmacs "$br" 2>/dev/null | awk '$3 == "no" { print $1, $2 }')
     fi
 
-    if [ -r /tmp/dhcp.leases ]; then
-        while read -r _ mac ip name _; do
-            [ "$name" = "*" ] && continue
-            mac=${mac,,}
-            name=$(printf '%s' "$name" | tr -cd 'A-Za-z0-9._-')
-            [ -n "$name" ] && name_by_mac[$mac]=$name
-        done < /tmp/dhcp.leases
-    fi
+    # This device's own DHCP tables: the lease file and the static host
+    # reservations.  A reservation overrides a lease name for the same MAC,
+    # because local_names prints it after the lease line.
+    while read -r mac ip name; do
+        [ -n "$mac" ] || continue
+        [ "$name" = '-' ] && continue
+        name_by_mac[$mac]=$name
+        case "$ip" in
+            ''|-) ;;
+            *) ip_local[$mac]=$ip ;;
+        esac
+    done < <(local_names)
 
     while read -r ip mac; do
         mac=${mac,,}
         [ -n "${ip_by_mac[$mac]:-}" ] || ip_by_mac[$mac]=$ip
     done < <(ip -4 neigh show dev "$br" 2>/dev/null \
         | awk '$2 == "lladdr" { print $1, $3 }')
+
+    # The names other mesh devices announced.  They only fill in what this
+    # device could not learn itself: the local lease/ARP data is authoritative
+    # for a client attached here, and a later announcement line replaces an
+    # earlier one.
+    if [ -r "$MESHASSISTANT_NAMES" ]; then
+        while read -r _ mac ip name; do
+            [ -n "$mac" ] || continue
+            [ "$name" = '-' ] || name_announced[$mac]=$name
+            case "$ip" in
+                ''|-) ;;
+                *) ip_announced[$mac]=$ip ;;
+            esac
+        done < "$MESHASSISTANT_NAMES"
+    fi
 
     # Nodes have no lease file; the server's dnsmasq answers reverse lookups
     # for its leased clients.  Prefer the configured LAN gateway, fall back to
@@ -2505,7 +2651,10 @@ client_info() {
 
     for mac in "${macs[@]}"; do
         ip=${ip_by_mac[$mac]:-}
+        [ -n "$ip" ] || ip=${ip_local[$mac]:-}
+        [ -n "$ip" ] || ip=${ip_announced[$mac]:-}
         name=${name_by_mac[$mac]:-}
+        [ -n "$name" ] || name=${name_announced[$mac]:-}
         if [ -z "$name" ] && [ -n "$ip" ] && [ -n "$gw" ]; then
             name=$(client_reverse_name "$ip" "$gw")
         fi
