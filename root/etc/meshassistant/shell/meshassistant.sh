@@ -167,6 +167,18 @@ uci_set_value() {
     done
 }
 
+# Write an optional option; an empty value deletes it so clearing a form
+# field cannot leave the previous setting in effect.
+uci_set_optional() {
+    local key="$1" val="$2"
+
+    if [ -n "$val" ]; then
+        uci_set_value "$key" "$val"
+    else
+        uci -q del "$key"
+    fi
+}
+
 # Save the value of a UCI option (or the fact that it is unset) under a key in
 # the meshassistant config.  $1 = meshassistant.config, $2 = option to save,
 # $3 = backup name.
@@ -652,8 +664,8 @@ apply_node_lan() {
             uci set network.lan.proto='static'
             uci_set_value network.lan.ipaddr "$ipaddr"
             uci_set_value network.lan.netmask "$netmask"
-            [ -n "$gateway" ] && uci_set_value network.lan.gateway "$gateway"
-            [ -n "$dns" ] && uci_set_value network.lan.dns "$dns"
+            uci_set_optional network.lan.gateway "$gateway"
+            uci_set_optional network.lan.dns "$dns"
             uci -q del network.lan.peerdns
 
             lan_state_expect "$ipaddr" "$netmask" "$gateway"
@@ -835,25 +847,27 @@ set_apmode() {
         fi
     fi
 
-    # Backup our configs
-    rm /etc/config/*.meshbak
-    cp /etc/config/wireless /etc/config/wireless.meshbak
-    cp /etc/config/network /etc/config/network.meshbak
-    cp /etc/config/dhcp /etc/config/dhcp.meshbak
-    cp /etc/config/system /etc/config/system.meshbak
-    cp /etc/config/firewall /etc/config/firewall.meshbak
+    # Back up the configs once, before the first conversion.  Re-applying
+    # while Dumb AP mode is already on must keep that original snapshot: the
+    # current files have been converted already and would overwrite it.
+    if [ "$(uci -q get meshassistant.config.ap_mode_enabled)" != 1 ]; then
+        rm -f "$MESHASSISTANT_CONFIG_DIR"/*.meshbak
+        cp "$MESHASSISTANT_CONFIG_DIR/wireless" "$MESHASSISTANT_CONFIG_DIR/wireless.meshbak"
+        cp "$MESHASSISTANT_CONFIG_DIR/network" "$MESHASSISTANT_CONFIG_DIR/network.meshbak"
+        cp "$MESHASSISTANT_CONFIG_DIR/dhcp" "$MESHASSISTANT_CONFIG_DIR/dhcp.meshbak"
+        cp "$MESHASSISTANT_CONFIG_DIR/system" "$MESHASSISTANT_CONFIG_DIR/system.meshbak"
+        cp "$MESHASSISTANT_CONFIG_DIR/firewall" "$MESHASSISTANT_CONFIG_DIR/firewall.meshbak"
+    else
+        echo "Dumb AP mode is already enabled; keeping the existing configuration backup."
+    fi
 
     uci set meshassistant.config.ap_mode_enabled=1
 
-    # Disabling and stopping services not needed
+    # Disabling and stopping services not needed.  Record which services this
+    # disabled so leaving Dumb AP restores exactly those and leaves services
+    # the administrator had already turned off alone.
     for service in firewall dnsmasq odhcpd; do
-        if /etc/init.d/$service enabled; then
-            echo "Disabling and stopping $service..."
-            /etc/init.d/$service disable >/dev/null 2>&1
-            /etc/init.d/$service stop >/dev/null 2>&1
-        else
-            echo "$service is not enabled, skipping..."
-        fi
+        disable_service_recorded "$service"
     done
 
     if [ "$(uci -q get meshassistant.config.ipmode)" == "static" ]; then
@@ -864,8 +878,8 @@ set_apmode() {
         uci set network.lan.proto='static'
         uci_set_value network.lan.ipaddr "$ipaddr"
         uci_set_value network.lan.netmask "$netmask"
-        [ -n "$gateway" ] && uci_set_value network.lan.gateway "$gateway"
-        [ -n "$dns" ] && uci_set_value network.lan.dns "$dns"
+        uci_set_optional network.lan.gateway "$gateway"
+        uci_set_optional network.lan.dns "$dns"
         uci -q del network.lan.peerdns
         lan_state_expect "$ipaddr" "$netmask" "$gateway"
     else
@@ -970,48 +984,45 @@ disable_apmode() {
     rm -f "$MESHASSISTANT_LAN_STATE"
 
     # Check our configs exist, then restore them
-    [ -f /etc/config/wireless.meshbak ] && {
+    [ -f "$MESHASSISTANT_CONFIG_DIR/wireless.meshbak" ] && {
         CONFIG_COUNT=$((CONFIG_COUNT+1))
     }
-    [ -f /etc/config/network.meshbak ] && {
+    [ -f "$MESHASSISTANT_CONFIG_DIR/network.meshbak" ] && {
         CONFIG_COUNT=$((CONFIG_COUNT+1))
     }
-    [ -f /etc/config/dhcp.meshbak ] && {
+    [ -f "$MESHASSISTANT_CONFIG_DIR/dhcp.meshbak" ] && {
         CONFIG_COUNT=$((CONFIG_COUNT+1))
     }
-    [ -f /etc/config/system.meshbak ] && {
+    [ -f "$MESHASSISTANT_CONFIG_DIR/system.meshbak" ] && {
         CONFIG_COUNT=$((CONFIG_COUNT+1))
     }
-    [ -f /etc/config/firewall.meshbak ] && {
+    [ -f "$MESHASSISTANT_CONFIG_DIR/firewall.meshbak" ] && {
         CONFIG_COUNT=$((CONFIG_COUNT+1))
     }
 
     # Check if we have 5 configs to restore
     if [ $CONFIG_COUNT -eq 5 ]; then
         echo "Restoring configs from backup..."
-        echo "Existing configs will be moved to /etc/config/*.dumbap for reference."
-        rm /etc/config/*.dumbap
-        mv /etc/config/dhcp /etc/config/dhcp.dumbap
-        mv /etc/config/network /etc/config/network.dumbap
-        mv /etc/config/wireless /etc/config/wireless.dumbap
-        mv /etc/config/system /etc/config/system.dumbap
-        mv /etc/config/firewall /etc/config/firewall.dumbap
-        mv /etc/config/dhcp.meshbak /etc/config/dhcp
-        mv /etc/config/network.meshbak /etc/config/network
-        mv /etc/config/wireless.meshbak /etc/config/wireless
-        mv /etc/config/system.meshbak /etc/config/system
-        mv /etc/config/firewall.meshbak /etc/config/firewall
+        echo "Existing configs will be moved to ${MESHASSISTANT_CONFIG_DIR}/*.dumbap for reference."
+        rm -f "$MESHASSISTANT_CONFIG_DIR"/*.dumbap
+        mv "$MESHASSISTANT_CONFIG_DIR/dhcp" "$MESHASSISTANT_CONFIG_DIR/dhcp.dumbap"
+        mv "$MESHASSISTANT_CONFIG_DIR/network" "$MESHASSISTANT_CONFIG_DIR/network.dumbap"
+        mv "$MESHASSISTANT_CONFIG_DIR/wireless" "$MESHASSISTANT_CONFIG_DIR/wireless.dumbap"
+        mv "$MESHASSISTANT_CONFIG_DIR/system" "$MESHASSISTANT_CONFIG_DIR/system.dumbap"
+        mv "$MESHASSISTANT_CONFIG_DIR/firewall" "$MESHASSISTANT_CONFIG_DIR/firewall.dumbap"
+        mv "$MESHASSISTANT_CONFIG_DIR/dhcp.meshbak" "$MESHASSISTANT_CONFIG_DIR/dhcp"
+        mv "$MESHASSISTANT_CONFIG_DIR/network.meshbak" "$MESHASSISTANT_CONFIG_DIR/network"
+        mv "$MESHASSISTANT_CONFIG_DIR/wireless.meshbak" "$MESHASSISTANT_CONFIG_DIR/wireless"
+        mv "$MESHASSISTANT_CONFIG_DIR/system.meshbak" "$MESHASSISTANT_CONFIG_DIR/system"
+        mv "$MESHASSISTANT_CONFIG_DIR/firewall.meshbak" "$MESHASSISTANT_CONFIG_DIR/firewall"
 
-        # Enable and start services not needed
-        for service in firewall dnsmasq odhcpd; do
-            if /etc/init.d/$service disabled; then
-                echo "Enabling and starting $service..."
-                /etc/init.d/$service enable
-                /etc/init.d/$service start
-            else
-                echo "$service is not disabled, skipping..."
-            fi
-        done
+        # Put back only the services this mode disabled; a service the
+        # administrator had disabled before entering Dumb AP stays off.
+        restore_services
+
+        # Dumb AP mode is over; the next enable must take a fresh snapshot.
+        uci -q del meshassistant.config.ap_mode_enabled
+        uci_commit meshassistant
 
         # Reload all the system configs
         reload_config

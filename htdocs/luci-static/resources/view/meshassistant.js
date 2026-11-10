@@ -1464,6 +1464,17 @@ return view.extend({
 					if (!next.ok && this.status && this.status.ok)
 						return;
 
+					/*
+					 * The mesh table and the connected-device list come
+					 * from separate reads.  Keep the last good client list
+					 * when only the clients read fails, instead of
+					 * replacing the table with the error message.
+					 */
+					if (next.clients && !next.clients.ok &&
+					    this.status && this.status.clients &&
+					    this.status.clients.ok)
+						next.clients = this.status.clients;
+
 					this.status = next;
 
 					const replacement = renderStatus(this.status, this.capabilities);
