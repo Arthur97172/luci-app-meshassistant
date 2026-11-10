@@ -28,6 +28,14 @@ const BACKUP_SELECTION = '/tmp/meshassistant_backup_selection';
  */
 const STATUS_REFRESH_INTERVAL = 10000;
 
+/*
+ * The connected-device list changes far less often than the mesh table, and
+ * reading it can be expensive because the nodes reverse-resolve unnamed
+ * clients.  It refreshes on its own slower timer, so a slow clients read never
+ * delays the Mesh Status table.
+ */
+const CLIENTS_REFRESH_INTERVAL = 60000;
+
 const callLanStatus = rpc.declare({
 	object: 'network.interface',
 	method: 'status',
@@ -629,22 +637,27 @@ function renderStatus(status, capabilities) {
 /*
  * Read only what the Mesh Status table displays.  The periodic refresh uses
  * this instead of load(), which would also read UCI, the radio list and the
- * run log and could disturb the form the user is filling in.
+ * run log and could disturb the form the user is filling in.  The connected
+ * devices are read separately on their own timer, because that read is the
+ * expensive one.
  */
 function readMeshStatus() {
 	return Promise.all([
 		fs.exec(BATCTL, [ 'n' ]).catch(() => null),
 		fs.read(PEERS_FILE).catch(() => ''),
 		fs.exec(SCRIPT, [ 'linkinfo' ]).catch(() => null),
-		fs.exec(BATCTL, [ 'o' ]).catch(() => null),
-		fs.exec(SCRIPT, [ 'clients' ]).catch(() => null)
-	]).then(function([ reply, peers, linkReply, originatorReply, clientsReply ]) {
-		const status = utils.parseStatus(reply, peers, linkReply, originatorReply);
-
-		status.clients = utils.parseClients(clientsReply);
-
-		return status;
+		fs.exec(BATCTL, [ 'o' ]).catch(() => null)
+	]).then(function([ reply, peers, linkReply, originatorReply ]) {
+		return utils.parseStatus(reply, peers, linkReply, originatorReply);
 	});
+}
+
+function readClients() {
+	return fs.exec(SCRIPT, [ 'clients' ])
+		.catch(() => null)
+		.then(function(reply) {
+			return utils.parseClients(reply);
+		});
 }
 
 /*
@@ -1432,26 +1445,65 @@ return view.extend({
 			}, [ statusEl ]);
 
 			/*
-			 * Refresh the Mesh Status tab in place.  Only the status data is
-			 * read again, and only while the tab is active and the browser tab
-			 * is visible.  The tab menu and the form are left untouched.
+			 * Refresh the Mesh Status tab in place.  The mesh table and the
+			 * connected-device list use separate timers: the mesh data is
+			 * read every 10 seconds, the device list every 60.  Only the tab
+			 * is refreshed while it is active and the browser tab is
+			 * visible; the tab menu and the form are left untouched.
 			 */
 			let statusTimer = null;
+			let clientsTimer = null;
 			let statusBusy = false;
+			let clientsBusy = false;
+
+			const stopTimers = () => {
+				if (statusTimer != null) {
+					clearInterval(statusTimer);
+					statusTimer = null;
+				}
+
+				if (clientsTimer != null) {
+					clearInterval(clientsTimer);
+					clientsTimer = null;
+				}
+			};
+
+			const mayRefresh = () =>
+				document.visibilityState !== 'hidden' &&
+				statusPane.getAttribute('data-tab-active') === 'true';
+
+			/*
+			 * Re-render the whole status area and keep the horizontal scroll
+			 * position of every table: the tables are wider than the page on
+			 * a phone, and a refresh must not jump them back to the left.
+			 */
+			const renderCurrentStatus = () => {
+				const offsets = Array.prototype.map.call(
+					statusPane.querySelectorAll('.meshassistant-status-scroll'),
+					function(el) { return el.scrollLeft; });
+
+				const replacement = renderStatus(this.status, this.capabilities);
+
+				while (statusPane.childNodes.length)
+					statusPane.removeChild(statusPane.childNodes[0]);
+
+				statusPane.appendChild(replacement);
+
+				Array.prototype.forEach.call(
+					statusPane.querySelectorAll('.meshassistant-status-scroll'),
+					function(el, index) {
+						if (offsets[index])
+							el.scrollLeft = offsets[index];
+					});
+			};
 
 			const refreshStatus = () => {
 				if (statusPane.isConnected === false) {
-					if (statusTimer != null) {
-						clearInterval(statusTimer);
-						statusTimer = null;
-					}
-
+					stopTimers();
 					return Promise.resolve();
 				}
 
-				if (statusBusy ||
-				    document.visibilityState === 'hidden' ||
-				    statusPane.getAttribute('data-tab-active') !== 'true')
+				if (statusBusy || !mayRefresh())
 					return Promise.resolve();
 
 				statusBusy = true;
@@ -1464,29 +1516,49 @@ return view.extend({
 					if (!next.ok && this.status && this.status.ok)
 						return;
 
-					/*
-					 * The mesh table and the connected-device list come
-					 * from separate reads.  Keep the last good client list
-					 * when only the clients read fails, instead of
-					 * replacing the table with the error message.
-					 */
-					if (next.clients && !next.clients.ok &&
-					    this.status && this.status.clients &&
-					    this.status.clients.ok)
-						next.clients = this.status.clients;
+					/* The device list belongs to the other timer. */
+					next.clients = this.status && this.status.clients;
 
 					this.status = next;
 
-					const replacement = renderStatus(this.status, this.capabilities);
-
-					while (statusPane.childNodes.length)
-						statusPane.removeChild(statusPane.childNodes[0]);
-
-					statusPane.appendChild(replacement);
+					renderCurrentStatus();
 				}).catch(() => {
 					/* Keep showing the last good snapshot. */
 				}).then(() => {
 					statusBusy = false;
+				});
+			};
+
+			const refreshClients = () => {
+				if (statusPane.isConnected === false) {
+					stopTimers();
+					return Promise.resolve();
+				}
+
+				if (clientsBusy || !mayRefresh())
+					return Promise.resolve();
+
+				clientsBusy = true;
+
+				return readClients().then((clients) => {
+					if (!clients || !this.status)
+						return;
+
+					/*
+					 * Keep the last good device table when only the clients
+					 * read fails, instead of replacing it with the error
+					 * message.
+					 */
+					if (!clients.ok && this.status.clients && this.status.clients.ok)
+						return;
+
+					this.status.clients = clients;
+
+					renderCurrentStatus();
+				}).catch(() => {
+					/* Keep showing the last good snapshot. */
+				}).then(() => {
+					clientsBusy = false;
 				});
 			};
 
@@ -1495,21 +1567,22 @@ return view.extend({
 			 * waiting for the next tick.
 			 */
 			statusTimer = setInterval(refreshStatus, STATUS_REFRESH_INTERVAL);
-			statusPane.addEventListener('cbi-tab-active', refreshStatus);
+			clientsTimer = setInterval(refreshClients, CLIENTS_REFRESH_INTERVAL);
+			statusPane.addEventListener('cbi-tab-active', function() {
+				refreshStatus();
+				refreshClients();
+			});
 
 			if (document.addEventListener)
 				document.addEventListener('visibilitychange', function() {
-					if (document.visibilityState !== 'hidden')
+					if (document.visibilityState !== 'hidden') {
 						refreshStatus();
+						refreshClients();
+					}
 				});
 
 			if (typeof window !== 'undefined' && window.addEventListener)
-				window.addEventListener('pagehide', function() {
-					if (statusTimer != null) {
-						clearInterval(statusTimer);
-						statusTimer = null;
-					}
-				});
+				window.addEventListener('pagehide', stopTimers);
 
 			const backupListEl = E('div', {
 				'class': 'cbi-section-descr',

@@ -16,6 +16,12 @@ MESHASSISTANT_ANNOUNCE_INTERVAL=10
 MESHASSISTANT_NAMES=/tmp/meshassistant_names
 MESHASSISTANT_NAME_MAX_AGE=120
 MESHASSISTANT_LEASES=/tmp/dhcp.leases
+# Reverse-DNS answers for clients without a local lease.  A node asks the
+# server's dnsmasq on every client listing, and a serial 2-second lookup per
+# unnamed client is slow; remember each answer (including "no name") for a
+# while so repeated listings do not repeat the lookups.
+MESHASSISTANT_RDNS_CACHE=${MESHASSISTANT_RDNS_CACHE:-/tmp/meshassistant_rdns}
+MESHASSISTANT_RDNS_TTL=${MESHASSISTANT_RDNS_TTL:-300}
 MESHASSISTANT_LOG=/tmp/meshassistant.log
 # Keep the run log bounded: /tmp is RAM-backed and the file is appended to by
 # every detached run and by the backup actions, so trim the oldest part once
@@ -2681,11 +2687,56 @@ client_info() {
     done | sort -k3,3 -k2,2
 }
 
+# Print the cached reverse-DNS answer for an address and return 0 on a hit.
+# A stored "-" is a cached negative answer: the server does not know the
+# address, so the caller gets no name and skips the lookup.
+rdns_cache_get() {
+    local ip="$1" now entry
+
+    [ -r "$MESHASSISTANT_RDNS_CACHE" ] || return 1
+    now=$(date +%s)
+    entry=$(awk -v ip="$ip" -v now="$now" -v ttl="$MESHASSISTANT_RDNS_TTL" '
+        $2 == ip && now - $1 < ttl { name = $3 }
+        END { if (name != "") print name }' "$MESHASSISTANT_RDNS_CACHE")
+    [ -n "$entry" ] || return 1
+    [ "$entry" = '-' ] && return 0
+    printf '%s\n' "$entry"
+}
+
+# Store one reverse-DNS answer.  Answers are appended under a lock so two
+# concurrent client listings cannot interleave; expired entries are dropped
+# when the file grows.
+rdns_cache_put() {
+    local ip="$1" name="$2" now
+
+    [ -n "$ip" ] || return 0
+    name=${name:--}
+    now=$(date +%s)
+    mkdir -p "${MESHASSISTANT_RDNS_CACHE%/*}" 2>/dev/null
+
+    (
+        if command -v flock >/dev/null 2>&1; then
+            flock -x 9 2>/dev/null || :
+        fi
+        printf '%s %s %s\n' "$now" "$ip" "$name" >> "$MESHASSISTANT_RDNS_CACHE"
+        if [ "$(wc -l < "$MESHASSISTANT_RDNS_CACHE")" -gt 400 ]; then
+            awk -v now="$now" -v ttl="$MESHASSISTANT_RDNS_TTL" \
+                'now - $1 < ttl' "$MESHASSISTANT_RDNS_CACHE" \
+                > "$MESHASSISTANT_RDNS_CACHE.tmp" &&
+                mv "$MESHASSISTANT_RDNS_CACHE.tmp" "$MESHASSISTANT_RDNS_CACHE"
+        fi
+    ) 9>"$MESHASSISTANT_RDNS_CACHE.lock"
+}
+
 # The hostname the server's dnsmasq has for a leased address, with the local
 # search domain dropped.  A node does not run the DHCP server itself, so this
 # is the only way it can name a client.
 client_reverse_name() {
     local name
+
+    if rdns_cache_get "$1"; then
+        return 0
+    fi
 
     command -v nslookup >/dev/null 2>&1 || return 0
 
@@ -2697,6 +2748,7 @@ client_reverse_name() {
     name=$(printf '%s\n' "$name" | sed -n 's/.*name = //p' | head -n 1)
     name=${name%.lan}
     name=$(printf '%s' "$name" | tr -cd 'A-Za-z0-9._-')
+    rdns_cache_put "$1" "$name"
     printf '%s\n' "$name"
 }
 
@@ -2846,6 +2898,10 @@ MESHASSISTANT_BACKUP_DIR=${MESHASSISTANT_BACKUP_DIR:-/etc/meshassistant/backup}
 MESHASSISTANT_BACKUP_SELECTION=${MESHASSISTANT_BACKUP_SELECTION:-/tmp/meshassistant_backup_selection}
 MESHASSISTANT_CONFIG_DIR=${MESHASSISTANT_CONFIG_DIR:-/etc/config}
 MESHASSISTANT_BACKUP_CONFIGS="network wireless dhcp firewall system meshassistant"
+# The directory is on flash and every mesh apply takes a backup, so keep only
+# the newest archives.  The names are timestamps, so lexical order is
+# chronological.
+MESHASSISTANT_BACKUP_KEEP=${MESHASSISTANT_BACKUP_KEEP:-20}
 
 # True while a service is enabled at boot.
 backup_service_state() {
@@ -2887,6 +2943,20 @@ backup_read_selection() {
         *.tar) printf '%s\n' "$name" ;;
         *) echo "Invalid backup name." >&2; return 1 ;;
     esac
+}
+
+# Remove the oldest archives beyond the retention limit.  Temporary archives
+# (hidden dotfiles) are never matched.
+backup_prune() {
+    local dir="$1" keep="$2" count file
+
+    count=$(find "$dir" -maxdepth 1 -type f -name '*.tar' | wc -l)
+    [ "$count" -gt "$keep" ] || return 0
+
+    find "$dir" -maxdepth 1 -type f -name '*.tar' | sort | head -n $((count - keep)) |
+        while read -r file; do
+            rm -f "$file"
+        done
 }
 
 # Create /etc/meshassistant/backup/<YYYYMMDD-HHMMSS>.tar from the current
@@ -2967,6 +3037,7 @@ backup_create() {
 
     chmod 600 "$file"
     rm -rf "$tmp"
+    backup_prune "$dir" "$MESHASSISTANT_BACKUP_KEEP"
     # Read by the backup subcommand dispatcher to record the action in the
     # run log; the function itself is also called without logging by a mesh
     # apply, whose own log already says that it is creating a backup.

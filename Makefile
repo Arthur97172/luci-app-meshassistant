@@ -6,7 +6,7 @@
 #
 
 PKG_NAME:=luci-app-meshassistant
-PKG_VERSION:=2.7.4
+PKG_VERSION:=2.7.5
 PKG_RELEASE:=1
 
 PKG_LICENSE:=GPL-3.0-only
@@ -27,6 +27,7 @@ define Package/luci-app-meshassistant/postrm
 [ "$${PKG_UPGRADE}" = "1" ] && exit 0
 rm -f /etc/config/meshassistant
 rm -f /tmp/meshassistant_peers /tmp/meshassistant_names /tmp/meshassistant.log /tmp/meshassistant_backup_selection
+rm -f /tmp/meshassistant_rdns /tmp/meshassistant_rdns.lock
 # Put DAWN back the way it was before the plugin took it over, but only when
 # the plugin actually managed it; a DAWN that the user configured is left
 # alone.  The marker is created by setup_dawn().
