@@ -456,3 +456,12 @@ msgstr "无法读取联机信息。"
 
 msgid "No connected devices found."
 msgstr "未发现已连接设备。"
+
+msgid "Updated at %s"
+msgstr "最后更新：%s"
+
+msgid "Mesh networking is disabled on this device."
+msgstr "本机的 Mesh 网络已停用。"
+
+msgid "The last refresh failed; showing the status from %s."
+msgstr "最近一次刷新失败，以下是 %s 的状态。"

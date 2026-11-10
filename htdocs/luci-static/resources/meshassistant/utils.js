@@ -301,6 +301,26 @@ return baseclass.extend({
 		return rows;
 	},
 
+	// "linkinfo" starts with the state the helper script reports for the
+	// applied mesh:
+	//   state active=0|1
+	// The status page uses it to tell a mesh the user turned off from one it
+	// simply cannot read.  A missing line (older script) or a failed read
+	// leaves the state unknown.
+	parseMeshState(reply) {
+		if (!reply || reply.code !== 0)
+			return null;
+
+		for (let line of String(reply.stdout == null ? '' : reply.stdout).split(/\r?\n/)) {
+			const m = /^state\s+active=([01])\s*$/.exec(line.trim());
+
+			if (m)
+				return m[1] === '1';
+		}
+
+		return null;
+	},
+
 	// "linkinfo" output of the helper script.  The radio driver reports the
 	// frequency, channel and width of a hardif and the signal of each
 	// station; the app merges them with the neighbor rows by interface name
@@ -930,8 +950,10 @@ return baseclass.extend({
 	},
 
 	parseStatus(reply, peerText, linkReply, originatorReply) {
+		const active = this.parseMeshState(linkReply);
+
 		if (!reply || reply.code !== 0)
-			return { ok: false, rows: [], local: [], role: '' };
+			return { ok: false, rows: [], local: [], role: '', active: active };
 
 		const rows = this.parseNeighbors(reply.stdout);
 		const peers = this.parsePeers(peerText);
@@ -950,7 +972,8 @@ return baseclass.extend({
 			ok: true,
 			rows: this.mergeAnnouncedRows(rows, peers, links, info),
 			local: local,
-			role: info ? info.role : ''
+			role: info ? info.role : '',
+			active: active
 		};
 	}
 });

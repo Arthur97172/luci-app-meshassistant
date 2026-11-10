@@ -581,6 +581,17 @@ function roamingHint(caps) {
 	return null;
 }
 
+/*
+ * The time of the snapshot, for the "Updated at" line.  Only the time is
+ * shown; the page is not expected to stay open across a day boundary.
+ */
+function statusTime(ts) {
+	const d = new Date(ts);
+	const pad = function(n) { return (n < 10 ? '0' : '') + n; };
+
+	return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+}
+
 function renderStatus(status, capabilities) {
 	const rows = status.rows;
 
@@ -592,13 +603,19 @@ function renderStatus(status, capabilities) {
 	})).size;
 
 	const children = [
-		E('h3', {}, [ _('Mesh Status') ]),
-		E('div', { 'class': 'cbi-section-descr' }, [
-			E('strong', {}, [
-				_('Number of Active Nodes: %d').format(nodes)
-			])
-		])
+		E('h3', {}, [ _('Mesh Status') ])
 	];
+
+	/*
+	 * A mesh the user turned off is a configured state, not a read failure:
+	 * say so instead of showing the red error.  The last snapshot may still
+	 * be below it, marked with its age.
+	 */
+	if (status.active === false) {
+		children.push(E('div', { 'class': 'alert-message info' }, [
+			_('Mesh networking is disabled on this device.')
+		]));
+	}
 
 	const hint = roamingHint(capabilities);
 
@@ -606,11 +623,35 @@ function renderStatus(status, capabilities) {
 		children.push(hint);
 
 	if (!status.ok) {
-		children.push(E('div', { 'class': 'alert-message error' }, [
-			_('Unable to read mesh status.')
-		]));
+		if (status.active !== false) {
+			children.push(E('div', { 'class': 'alert-message error' }, [
+				_('Unable to read mesh status.')
+			]));
+		}
 	}
 	else {
+		children.push(E('div', { 'class': 'cbi-section-descr' }, [
+			E('strong', {}, [
+				_('Number of Active Nodes: %d').format(nodes)
+			])
+		]));
+
+		/*
+		 * A failed refresh keeps the last good table, so it has to carry
+		 * when it was read; otherwise a stale snapshot looks current.
+		 */
+		if (status.stale && status.updated) {
+			children.push(E('div', { 'class': 'cbi-section-descr' }, [
+				_('The last refresh failed; showing the status from %s.')
+					.format(statusTime(status.updated))
+			]));
+		}
+		else if (status.updated) {
+			children.push(E('div', { 'class': 'cbi-section-descr' }, [
+				_('Updated at %s').format(statusTime(status.updated))
+			]));
+		}
+
 		children.push(statusSubtitle(_('Remote Hosts')));
 
 		if (rows.length === 0) {
@@ -850,6 +891,8 @@ return view.extend({
 
 			this.status = utils.parseStatus(reply, peers, linkReply, originatorReply);
 			this.status.clients = utils.parseClients(clientsReply);
+			this.status.updated = Date.now();
+			this.status.stale = false;
 			this.capabilities = parseCapabilities(capsReply);
 			this.logText = logText || '';
 			this.lanDefaults = utils.lanDefaults(lanStatus, uci.get('network', 'lan') || {});
@@ -975,7 +1018,12 @@ return view.extend({
 			o.value(value, known ? known[1] : value);
 		}
 
-		o.default = 'radio1';
+		/*
+		 * Default to the first radio the device reports.  A fixed radio name
+		 * is not offered on every device, and a default outside the choices
+		 * leaves the field empty, which fails the validator below on save.
+		 */
+		o.default = this.apRadios.length ? this.apRadios[0][0] : '';
 		o.rmempty = false;
 		o.validate = function(section_id, value) {
 			return listValues(value).length > 0 || _('Select at least one radio.');
@@ -1509,17 +1557,32 @@ return view.extend({
 				statusBusy = true;
 
 				return readMeshStatus().then((next) => {
-					/*
-					 * A single failed read must not replace a good snapshot
-					 * with the error message.
-					 */
-					if (!next.ok && this.status && this.status.ok)
-						return;
+					const previous = this.status;
 
-					/* The device list belongs to the other timer. */
-					next.clients = this.status && this.status.clients;
-
-					this.status = next;
+					if (next.ok) {
+						next.updated = Date.now();
+						next.stale = false;
+						/* The device list belongs to the other timer. */
+						next.clients = previous && previous.clients;
+						this.status = next;
+					}
+					else if (previous && previous.ok) {
+						/*
+						 * A single failed read must not replace a good
+						 * snapshot with the error message, but it must not
+						 * pass it off as current either.  The applied state
+						 * still comes from this read, so turning the mesh
+						 * off is visible immediately.
+						 */
+						previous.active = next.active != null
+							? next.active : previous.active;
+						previous.stale = true;
+						this.status = previous;
+					}
+					else {
+						next.clients = previous && previous.clients;
+						this.status = next;
+					}
 
 					renderCurrentStatus();
 				}).catch(() => {

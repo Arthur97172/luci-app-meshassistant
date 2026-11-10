@@ -2483,6 +2483,14 @@ hardif_is_wireless() {
 #   local <hostname> <IPv4|-> <load|->
 link_info() {
     local ip have_iw role kind mac
+    # The status page must not report a mesh the user turned off as a read
+    # error.  "running" is set when an apply succeeded and cleared by a
+    # disable, so it describes the applied state, not just the saved form.
+    if [ "$(uci -q get meshassistant.config.running)" = 1 ]; then
+        printf 'state active=1\n'
+    else
+        printf 'state active=0\n'
+    fi
     ip=$(lan_ipv4)
     # The status table labels this device with its effective role.  LuCI omits
     # the option when it equals the form default, so an empty value is the

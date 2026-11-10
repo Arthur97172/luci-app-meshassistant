@@ -454,3 +454,12 @@ msgstr ""
 
 msgid "No connected devices found."
 msgstr ""
+
+msgid "Updated at %s"
+msgstr ""
+
+msgid "Mesh networking is disabled on this device."
+msgstr ""
+
+msgid "The last refresh failed; showing the status from %s."
+msgstr ""

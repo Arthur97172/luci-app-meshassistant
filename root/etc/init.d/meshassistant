@@ -19,6 +19,10 @@ start_service() {
 
 stop_service() {
 	rm -f /tmp/meshassistant_peers
+	# The announced names belong to the peer that just stopped; without this
+	# the clients listing would keep showing them, and nothing prunes the
+	# file while the daemon is not running.
+	rm -f /tmp/meshassistant_names
 }
 
 reload_service() {
