@@ -73,6 +73,9 @@ msgstr "客户端"
 msgid "Combine two selected radios into one Wi-Fi 7 Multi-Link Operation (MLO) access point. The radios are switched to EHT mode. MLO requires exactly two radios."
 msgstr "将所选的两个射频合并为一个 Wi-Fi 7 多链路操作（MLO）接入点，射频会自动切换为 EHT 模式。启用 MLO 需要恰好选择两个射频。"
 
+msgid "DAWN keeps restarting (respawn count: %d), so client steering is interrupted. Check the system log."
+msgstr "DAWN 反复重启（重启计数：%d），客户端引导会中断。请查看系统日志。"
+
 msgid "DHCP"
 msgstr "DHCP"
 

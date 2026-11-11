@@ -71,6 +71,9 @@ msgstr ""
 msgid "Combine two selected radios into one Wi-Fi 7 Multi-Link Operation (MLO) access point. The radios are switched to EHT mode. MLO requires exactly two radios."
 msgstr ""
 
+msgid "DAWN keeps restarting (respawn count: %d), so client steering is interrupted. Check the system log."
+msgstr ""
+
 msgid "DHCP"
 msgstr ""
 

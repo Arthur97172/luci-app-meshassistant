@@ -559,7 +559,7 @@ function renderClients(result) {
  * missing.  This keeps the feature discoverable without turning it on by
  * default.
  */
-function roamingHint(caps) {
+function roamingHint(caps, dawnUnstable) {
 	if (!caps)
 		return null;
 
@@ -576,6 +576,18 @@ function roamingHint(caps) {
 	if (caps.kvr && caps.dawn && caps.dawn_running === false)
 		return E('div', { 'class': 'alert-message warning' }, [
 			_('Client roaming is on, but the DAWN service is not running, so clients are not steered.')
+		]);
+
+	/*
+	 * procd restarts DAWN after a crash within seconds, so the service
+	 * keeps reporting "running" while it actually loses its client state.
+	 * Only a respawn count that grew between two status reads exposed the
+	 * loop to the page.
+	 */
+	if (caps.kvr && dawnUnstable)
+		return E('div', { 'class': 'alert-message warning' }, [
+			_('DAWN keeps restarting (respawn count: %d), so client steering is interrupted. Check the system log.')
+				.format(caps.dawn_restarts)
 		]);
 
 	if (!caps.kvr && caps.wnm && caps.dawn)
@@ -597,7 +609,7 @@ function statusTime(ts) {
 	return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
 }
 
-function renderStatus(status, capabilities) {
+function renderStatus(status, capabilities, dawnUnstable) {
 	const rows = status.rows;
 
 	// One node has one row per hardif, so the subtitle counts the devices, not
@@ -624,7 +636,7 @@ function renderStatus(status, capabilities) {
 
 	/* A disabled mesh has DAWN stopped with it, so capability advice there
 	 * would only repeat what the notice above already says. */
-	const hint = status.active === false ? null : roamingHint(capabilities);
+	const hint = status.active === false ? null : roamingHint(capabilities, dawnUnstable);
 
 	if (hint)
 		children.push(hint);
@@ -718,12 +730,19 @@ function readClients() {
 function parseCapabilities(reply) {
 	const caps = {};
 	const text = (reply && reply.stdout) || '';
+	/* The probe prints switches and counters alike; only these keys are
+	 * booleans, everything else is a number (the DAWN respawn count). */
+	const flags = new Set([ 'kvr', 'wnm', 'dawn', 'dawn_running' ]);
 
 	for (const line of text.split(/\r?\n/)) {
-		const match = /^([a-z_]+)=([01])$/.exec(line);
+		const match = /^([a-z_]+)=(-?\d+)$/.exec(line);
 
-		if (match)
-			caps[match[1]] = match[2] === '1';
+		if (!match)
+			continue;
+
+		caps[match[1]] = flags.has(match[1])
+			? match[2] === '1'
+			: Number(match[2]);
 	}
 
 	if ((reply && reply.code) || !('wnm' in caps))
@@ -851,6 +870,7 @@ return view.extend({
 	wiredPorts: [],
 	status: { ok: true, rows: [], clients: { ok: true, clients: [] } },
 	capabilities: null,
+	dawnUnstable: false,
 	logText: '',
 	backups: [],
 	lanDefaults: { ipaddr: '', netmask: '', gateway: '', dns: '' },
@@ -963,7 +983,7 @@ return view.extend({
 	},
 
 	render() {
-		const statusEl = renderStatus(this.status, this.capabilities);
+		const statusEl = renderStatus(this.status, this.capabilities, this.dawnUnstable);
 
 		const m = new form.Map('meshassistant');
 		const s = m.section(form.TypedSection, 'meshassistant', _('Mesh Settings'));
@@ -1537,7 +1557,7 @@ return view.extend({
 					statusPane.querySelectorAll('.meshassistant-status-scroll'),
 					function(el) { return el.scrollLeft; });
 
-				const replacement = renderStatus(this.status, this.capabilities);
+				const replacement = renderStatus(this.status, this.capabilities, this.dawnUnstable);
 
 				while (statusPane.childNodes.length)
 					statusPane.removeChild(statusPane.childNodes[0]);
@@ -1572,8 +1592,27 @@ return view.extend({
 					const previous = this.status;
 					const caps = parseCapabilities(capsReply);
 
-					if (caps)
+					if (caps) {
+						const previousCaps = this.capabilities;
+
+						/*
+						 * A respawn count that grows between two reads is
+						 * the crash loop procd hides behind its fast
+						 * restarts.  A lower count means the instance was
+						 * recreated on purpose (a manual restart), so the
+						 * warning no longer applies.
+						 */
+						if (previousCaps &&
+						    typeof caps.dawn_restarts === 'number' &&
+						    typeof previousCaps.dawn_restarts === 'number') {
+							if (caps.dawn_restarts > previousCaps.dawn_restarts)
+								this.dawnUnstable = true;
+							else if (caps.dawn_restarts < previousCaps.dawn_restarts)
+								this.dawnUnstable = false;
+						}
+
 						this.capabilities = caps;
+					}
 
 					if (next.ok) {
 						next.updated = Date.now();

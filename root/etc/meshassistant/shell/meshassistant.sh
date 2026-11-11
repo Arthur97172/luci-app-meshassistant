@@ -1329,23 +1329,33 @@ wnm_supported() {
 # apply, so the hint the page shows matches what enabling client roaming would
 # actually do: kvr is the roaming switch, wnm whether the installed wpad build
 # has 802.11v, dawn whether DAWN is installed, dawn_running whether its procd
-# instance is up.
+# instance is up, dawn_restarts how often procd has respawned it (omitted when
+# procd cannot report the count).
 capabilities() {
-    local kvr=0 wnm=0 dawn=0 dawn_running=0
+    local kvr=0 wnm=0 dawn=0 dawn_running=0 restarts=""
 
     [ "$(uci -q get meshassistant.config.kvr)" = 1 ] && kvr=1
     wnm_supported && wnm=1
     if [ -x /etc/init.d/dawn ]; then
         dawn=1
-        # DAWN has been crashing under load; an installed but stopped service
-        # steers nothing, so the status page has to see that state.
+        # An installed but stopped service steers nothing, so the status
+        # page has to see that state.  The procd respawn count travels with
+        # it: a DAWN that crashes keeps looking "running" between respawns,
+        # and only a rising count reveals the loop.
         if /etc/init.d/dawn status >/dev/null 2>&1; then
             dawn_running=1
+            restarts=$(ubus call service list '{"name":"dawn"}' 2>/dev/null |
+                jsonfilter -e '@.dawn.instances.instance1.respawn_count' 2>/dev/null)
         fi
     fi
 
     printf 'kvr=%s\nwnm=%s\ndawn=%s\ndawn_running=%s\n' \
         "$kvr" "$wnm" "$dawn" "$dawn_running"
+    if [ -n "$restarts" ]; then
+        printf 'dawn_restarts=%s\n' "$restarts"
+    fi
+
+    return 0
 }
 
 # Write the settings shared by every regular WiFi AP.  $1 is the UCI section
@@ -1815,11 +1825,15 @@ setup_dawn() {
     # moving a client.  set_hostapd_nr=1 publishes every AP in the mesh as a
     # neighbor report.  The absolute check compares against rssi_center, so
     # the form's Bad RSSI value is written there as well, not only to
-    # low_rssi_val which scores the connection.
+    # low_rssi_val which scores the connection.  duration is the 802.11k
+    # measurement time and the BTM disassociation/validity window in
+    # milliseconds; the stock file ships zero, which leaves the request
+    # without a validity window, so write the daemon's own default.
     uci set dawn.global.kicking='3'
     uci set dawn.global.kicking_threshold='20'
     uci set dawn.global.min_number_to_kick='3'
     uci set dawn.global.set_hostapd_nr='1'
+    uci set dawn.global.duration='150'
     for band in 802_11g 802_11a; do
         uci set dawn.$band.rssi_val="$rssi"
         uci set dawn.$band.low_rssi_val="$low"
