@@ -716,10 +716,11 @@ apply_node_lan() {
 #
 # The selected Ethernet port is removed from the LAN bridge and attached to
 # bat0 as a batadv_hardif.  Both ends of the cable must select their port.
-# BATMAN_V normally rates a wired link by its link speed; the throughput
-# override makes the wired link win even when the 802.11s backhaul reports a
-# higher rate.  When the cable is unplugged the hardif goes down and BATMAN_V
-# automatically falls back to the wireless hardif.
+# BATMAN_V rates a non-WiFi hardif at 1000 Mbit/s unless its
+# throughput_override names the real rate, so the override is pinned to the
+# port's negotiated speed: a 2.5G/5G/10G backhaul outranks the Mesh radio,
+# and a slow port does not.  When the cable is unplugged the hardif goes down
+# and BATMAN_V automatically falls back to the wireless hardif.
 # ---------------------------------------------------------------------------
 
 wired_backhaul_port() {
@@ -729,6 +730,21 @@ wired_backhaul_port() {
         ''|none) return 1 ;;
     esac
     printf '%s\n' "$port"
+}
+
+# The negotiated speed of an Ethernet port in Mbit/s.  A port without a cable
+# reports -1 (some drivers UINT_MAX), which is not a usable rate; a missing
+# sysfs entry or a non-numeric value is no better.  The caller then keeps the
+# throughput override it already had.
+wired_link_speed() {
+    local speed
+
+    speed=$(cat "$MESHASSISTANT_SYS_CLASS_NET/$1/speed" 2>/dev/null)
+    case "$speed" in
+        ''|*[!0-9]*) return 1 ;;
+    esac
+    [ "$speed" -ge 1 ] && [ "$speed" -le 1000000 ] || return 1
+    printf '%s\n' "$speed"
 }
 
 wired_port_is_usable() {
@@ -802,7 +818,7 @@ remove_wired_backhaul() {
 }
 
 apply_wired_backhaul() {
-    local port section ports
+    local port section ports speed
 
     if ! port=$(wired_backhaul_port); then
         remove_wired_backhaul
@@ -839,7 +855,10 @@ apply_wired_backhaul() {
     uci set network.mesh_wired.master='bat0'
     uci set network.mesh_wired.device="$port"
     uci set network.mesh_wired.mtu='1500'
-    uci set network.mesh_wired.throughput_override='100000mbit'
+    # Without a link there is no rate to pin to; keep the previous override.
+    if speed=$(wired_link_speed "$port"); then
+        uci set network.mesh_wired.throughput_override="${speed}mbit"
+    fi
     echo "Wired backhaul enabled on '$port'."
 }
 
@@ -1369,11 +1388,22 @@ configure_ap_iface() {
     uci set wireless.$section.mode='ap'
     uci set wireless.$section.ssid="$ssid"
     uci set wireless.$section.network='lan'
-    uci set wireless.$section.ieee80211r='1'
-    uci set wireless.$section.mobility_domain="$MOBILITY_DOMAIN"
-    uci set wireless.$section.ft_over_ds='0'
-    uci set wireless.$section.ft_psk_generate_local='0'
     uci set wireless.$section.disabled='0'
+
+    # 802.11r (fast transition) is its own switch, independent of 802.11k/v.
+    # hostapd rejects the ft_* options while ieee80211r is off, so they are
+    # removed together when the user turns fast roaming off.
+    if [ "${FT_ENABLED:-1}" = 1 ]; then
+        uci set wireless.$section.ieee80211r='1'
+        uci set wireless.$section.mobility_domain="$MOBILITY_DOMAIN"
+        uci set wireless.$section.ft_over_ds='0'
+        uci set wireless.$section.ft_psk_generate_local='0'
+    else
+        uci -q delete wireless.$section.ieee80211r
+        uci -q delete wireless.$section.mobility_domain
+        uci -q delete wireless.$section.ft_over_ds
+        uci -q delete wireless.$section.ft_psk_generate_local
+    fi
 
     # 802.11k/v are only useful for steering, so they follow the roaming
     # switch.  hostapd refuses to start on an option it was not compiled
@@ -1589,6 +1619,8 @@ setup_ap_radios() {
     MOBILITY_DOMAIN=$(uci -q get meshassistant.config.mobility_domain)
     KVR_ENABLED=$(uci -q get meshassistant.config.kvr)
     [ -n "$KVR_ENABLED" ] || KVR_ENABLED=0
+    FT_ENABLED=$(uci -q get meshassistant.config.ft)
+    [ -n "$FT_ENABLED" ] || FT_ENABLED=1
     MLO_ENABLED=$(uci -q get meshassistant.config.mlo)
     SSID_MODE=$(uci -q get meshassistant.config.ssid_mode)
     [ -z "$SSID_MODE" ] && SSID_MODE='same'

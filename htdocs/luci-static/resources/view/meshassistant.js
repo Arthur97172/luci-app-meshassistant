@@ -1347,8 +1347,12 @@ return view.extend({
 		o = s.taboption('advanced', form.Flag, 'kvr', _('Client Roaming (802.11k/v)'), _('Let DAWN steer clients to the strongest access point. Requires a full wpad build; wpad-basic lacks 802.11v, so roaming stays off.'));
 		o.default = '0';
 
+		o = s.taboption('advanced', form.Flag, 'ft', _('Fast Roaming (802.11r)'), _('Let clients move between access points without re-authenticating. Uses the Mobility Domain below.'));
+		o.default = '1';
+
 		o = s.taboption('advanced', form.Value, 'mobility_domain', _('Mobility Domain'));
 		o.default = '4f57';
+		o.depends('ft', '1');
 		o.datatype = 'and(hexstring,rangelength(4,4))';
 		/*
 		 * Without rmempty the default would be dropped on save; the script

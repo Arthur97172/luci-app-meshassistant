@@ -151,6 +151,12 @@ msgstr "客户端漫游（802.11k/v）"
 msgid "Let DAWN steer clients to the strongest access point. Requires a full wpad build; wpad-basic lacks 802.11v, so roaming stays off."
 msgstr "由 DAWN 引导客户端切换到信号最强的接入点。需要完整版 wpad；wpad-basic 不支持 802.11v，漫游将保持关闭。"
 
+msgid "Fast Roaming (802.11r)"
+msgstr "快速漫游（802.11r）"
+
+msgid "Let clients move between access points without re-authenticating. Uses the Mobility Domain below."
+msgstr "让客户端在接入点之间切换时无需重新认证，使用下方的移动域。"
+
 msgid "Client roaming is on, but this wpad build lacks 802.11v. Install a full wpad build or turn roaming off."
 msgstr "漫游已开启，但当前 wpad 不支持 802.11v。请安装完整版 wpad 或关闭漫游。"
 

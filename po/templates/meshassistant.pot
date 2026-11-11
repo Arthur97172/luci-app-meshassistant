@@ -149,6 +149,12 @@ msgstr ""
 msgid "Let DAWN steer clients to the strongest access point. Requires a full wpad build; wpad-basic lacks 802.11v, so roaming stays off."
 msgstr ""
 
+msgid "Fast Roaming (802.11r)"
+msgstr ""
+
+msgid "Let clients move between access points without re-authenticating. Uses the Mobility Domain below."
+msgstr ""
+
 msgid "Client roaming is on, but this wpad build lacks 802.11v. Install a full wpad build or turn roaming off."
 msgstr ""
 
