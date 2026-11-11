@@ -387,6 +387,79 @@ restore_dhcp_lan_state() {
     echo "Restored the original LAN DHCP settings."
 }
 
+# DHCP option 6 advertises the DNS server.  dnsmasq normally advertises
+# itself; an explicit value replaces that, and the option is restored when
+# the mesh is disabled.  Only option 6 is touched: a user's routes, NTP
+# servers or other options keep their entries.
+remove_dhcp_option6() {
+    local option
+
+    for option in $(uci -q get dhcp.lan.dhcp_option); do
+        case "$option" in
+            6,*) uci -q del_list dhcp.lan.dhcp_option="$option" ;;
+        esac
+    done
+}
+
+# Record the option 6 entries once, before the first change, so disabling the
+# mesh can put them back.
+save_dhcp_dns_state() {
+    local option saved=''
+
+    [ "$(uci -q get meshassistant.config.dhcp_dns_saved)" = 1 ] && return 0
+
+    for option in $(uci -q get dhcp.lan.dhcp_option); do
+        case "$option" in
+            6,*) saved="$saved $option" ;;
+        esac
+    done
+    uci_set_optional meshassistant.config.dhcp_option6_backup "${saved# }"
+    uci set meshassistant.config.dhcp_dns_saved=1
+}
+
+restore_dhcp_dns_state() {
+    local option
+
+    [ "$(uci -q get meshassistant.config.dhcp_dns_saved)" = 1 ] || return 0
+
+    remove_dhcp_option6
+    for option in $(uci -q get meshassistant.config.dhcp_option6_backup); do
+        uci add_list dhcp.lan.dhcp_option="$option"
+    done
+    uci -q del meshassistant.config.dhcp_option6_backup
+    uci -q del meshassistant.config.dhcp_dns_saved
+    uci_commit dhcp
+    echo "Restored the original DHCP option 6."
+}
+
+# Advertise the configured DNS server to DHCP clients.  An empty field leaves
+# dnsmasq's own advertisement in place unless this feature set one earlier.
+apply_server_dhcp_dns() {
+    local dns="$1" server list
+
+    if [ -z "$dns" ]; then
+        if [ "$(uci -q get meshassistant.config.dhcp_dns_saved)" = 1 ]; then
+            remove_dhcp_option6
+        fi
+        return 0
+    fi
+
+    # Validate before changing anything: an invalid address must not drop a
+    # working advertisement and leave the LAN without DNS.
+    for server in $dns; do
+        if ! valid_ipv4 "$server"; then
+            echo "Error: 'DHCP DNS Server' '$server' is not a valid IPv4 address; keeping the current DHCP option 6."
+            return 1
+        fi
+    done
+
+    save_dhcp_dns_state
+    remove_dhcp_option6
+
+    list=$(printf '%s' "$dns" | tr ' ' ',')
+    uci add_list dhcp.lan.dhcp_option="6,$list"
+}
+
 # Node LAN address and hostname state.
 save_node_lan_state() {
     [ "$(uci -q get meshassistant.config.lan_state_saved)" = 1 ] && return 0
@@ -656,11 +729,45 @@ lan_watchdog_check() {
     return 1
 }
 
+# The address a DHCP client obtained on the LAN, empty when there is none.
+lan_dhcp_address() {
+    ubus call network.interface.lan status 2>/dev/null |
+        jsonfilter -e '@["ipv4-address"][0].address' 2>/dev/null
+}
+
+# A node without a lease is unreachable, and the mesh status only shows it as
+# gone.  Check once after the apply and record the cause; nothing can be
+# repaired automatically, because without an address the device cannot be
+# managed either.
+lan_dhcp_lease_check() {
+    local address
+
+    address=$(lan_dhcp_address)
+    if [ -n "$address" ]; then
+        echo "Verified the DHCP lease $address after applying."
+        return 0
+    fi
+
+    log_append "Warning: the LAN interface has no DHCP lease; check the uplink cable or the server's DHCP service."
+    return 1
+}
+
+lan_dhcp_lease_watchdog() {
+    local delay="${MESHASSISTANT_DHCP_WATCHDOG_DELAY:-30}"
+
+    [ "$delay" = 0 ] && return 0
+
+    (
+        sleep "$delay"
+        lan_dhcp_lease_check
+    ) >/dev/null 2>&1 &
+}
+
 # Apply the AP Mode tab settings to a node.  This is also used by normal
 # enable, not only by Dumb AP mode: IP Mode / static address / gateway /
 # netmask / DNS / hostname are the node's management addressing.
 apply_node_lan() {
-    local ipmode hostname ipaddr netmask gateway dns
+    local ipmode hostname ipaddr netmask gateway dns dhcp_client=0
 
     ipmode=$(uci -q get meshassistant.config.ipmode)
     hostname=$(uci -q get meshassistant.config.hostname)
@@ -697,6 +804,7 @@ apply_node_lan() {
         uci -q del network.lan.netmask
         uci -q del network.lan.gateway
         apply_dhcp_lan_dns "$dns"
+        dhcp_client=1
         echo "Node LAN configured as a DHCP client."
     fi
 
@@ -709,6 +817,8 @@ apply_node_lan() {
     uci_commit network
     uci_commit system
     uci_commit meshassistant
+
+    [ "$dhcp_client" = 1 ] && lan_dhcp_lease_watchdog
 }
 
 # ---------------------------------------------------------------------------
@@ -1224,6 +1334,8 @@ create_batman_network() {
             restore_service_if_disabled dnsmasq
             restore_service_if_disabled odhcpd
             restore_dhcp_lan_state
+            apply_server_dhcp_dns "$(uci -q get meshassistant.config.dhcp_dns)"
+            uci_commit dhcp
         else
             save_dhcp_lan_state
             if uci -q get dhcp.lan >/dev/null; then
@@ -2968,6 +3080,7 @@ disable_meshassistant() {
     restore_node_lan_state
     restore_hostname_state
     restore_dhcp_lan_state
+    restore_dhcp_dns_state
     restore_services
 
     # Remove our firewall additions again, but leave the other zones and their

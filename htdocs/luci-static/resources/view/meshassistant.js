@@ -656,6 +656,33 @@ function statusTime(ts) {
 	return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
 }
 
+/*
+ * A node that expects its LAN address from DHCP cannot be reached without a
+ * lease, and the table only shows it as gone.  Only a known-missing lease is a
+ * warning: an unreadable interface status (null) must not raise a false alarm,
+ * and a static node has no lease to miss.
+ */
+function lanLeaseWarning(status) {
+	if (status.role !== 'off' && status.role !== 'client')
+		return null;
+
+	/*
+	 * ipmode is the configured intent, but older configurations predate the
+	 * field; a LAN that is actually static is the authoritative answer.
+	 */
+	if (uci.get('meshassistant', 'config', 'ipmode') === 'static' ||
+	    uci.get('network', 'lan', 'proto') === 'static' ||
+	    uci.get('network', 'lan', 'ipaddr') != null)
+		return null;
+
+	if (status.lanLease !== '')
+		return null;
+
+	return E('div', { 'class': 'alert-message warning' }, [
+		_('This node has no DHCP lease on its LAN interface. Check the uplink cable or the DHCP service on the server.')
+	]);
+}
+
 function renderStatus(status, capabilities, dawnUnstable) {
 	const rows = status.rows;
 
@@ -687,6 +714,11 @@ function renderStatus(status, capabilities, dawnUnstable) {
 
 	if (hint)
 		children.push(hint);
+
+	const leaseWarning = lanLeaseWarning(status);
+
+	if (leaseWarning)
+		children.push(leaseWarning);
 
 	if (!status.ok) {
 		if (status.active !== false) {
@@ -755,11 +787,13 @@ function readMeshStatus() {
 		fs.read(PEERS_FILE).catch(() => ''),
 		fs.exec(SCRIPT, [ 'linkinfo' ]).catch(() => null),
 		fs.exec(BATCTL, [ 'o' ]).catch(() => null),
-		fs.exec(SCRIPT, [ 'roaming' ]).catch(() => null)
-	]).then(function([ reply, peers, linkReply, originatorReply, roamingReply ]) {
+		fs.exec(SCRIPT, [ 'roaming' ]).catch(() => null),
+		callLanStatus('lan').catch(() => null)
+	]).then(function([ reply, peers, linkReply, originatorReply, roamingReply, lanStatus ]) {
 		const status = utils.parseStatus(reply, peers, linkReply, originatorReply);
 
 		status.roaming = utils.parseRoaming(roamingReply);
+		status.lanLease = utils.lanLeaseAddress(lanStatus);
 
 		return status;
 	});
@@ -973,6 +1007,7 @@ return view.extend({
 			this.status = utils.parseStatus(reply, peers, linkReply, originatorReply);
 			this.status.clients = utils.parseClients(clientsReply);
 			this.status.roaming = utils.parseRoaming(roamingReply);
+			this.status.lanLease = utils.lanLeaseAddress(lanStatus);
 			this.status.updated = Date.now();
 			this.status.stale = false;
 			this.capabilities = parseCapabilities(capsReply);
@@ -1071,6 +1106,12 @@ return view.extend({
 		o = s.taboption('setup', form.Flag, 'server_dhcp', _('Server Provides DHCP'), _('Keep this enabled when the Mesh server is the only gateway and should provide DHCP and IPv6 RA for the LAN. Disable it when another router on the LAN already provides DHCP: the server then keeps the gateway and DNS role but stops its own DHCP/RA server.'));
 		o.default = '1';
 		o.depends('role', 'server');
+
+		o = s.taboption('setup', form.Value, 'dhcp_dns', _('DHCP DNS Server'), _('The DNS server that DHCP clients receive as DHCP option 6. Leave it empty to let dnsmasq advertise this router.'));
+		o.default = '';
+		o.datatype = 'ip4addr';
+		o.rmempty = true;
+		o.depends('server_dhcp', '1');
 
 		o = s.taboption('setup', form.Value, 'wifi_id', _('WiFi Network SSID'), _('SSID for the regular WiFi network. This SSID is also used by the MLO access point and by radios without their own SSID.'));
 		o.default = 'meshassistant_AC';

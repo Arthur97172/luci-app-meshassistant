@@ -502,3 +502,12 @@ msgstr ""
 
 msgid "Leave empty to use the shared threshold above."
 msgstr ""
+
+msgid "DHCP DNS Server"
+msgstr ""
+
+msgid "The DNS server that DHCP clients receive as DHCP option 6. Leave it empty to let dnsmasq advertise this router."
+msgstr ""
+
+msgid "This node has no DHCP lease on its LAN interface. Check the uplink cable or the DHCP service on the server."
+msgstr ""

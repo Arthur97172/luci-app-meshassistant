@@ -199,6 +199,27 @@ return baseclass.extend({
 		};
 	},
 
+	// The address a DHCP client currently holds on the LAN.  An empty string
+	// means the interface is up but has no lease; null means the interface
+	// status could not be read, so the caller must not treat the missing
+	// lease as a fault.
+	lanLeaseAddress(status) {
+		if (!status || typeof status !== 'object')
+			return null;
+
+		const addresses = Array.isArray(status['ipv4-address'])
+			? status['ipv4-address'] : [];
+
+		for (const addr of addresses) {
+			const ip = this.ipv4(addr && addr.address);
+
+			if (ip)
+				return ip;
+		}
+
+		return '';
+	},
+
 	// Newest announcement per MAC.  A device announces every few seconds, so
 	// several lines for the same MAC can be fresh at the same time.
 	latestPeers(entries) {

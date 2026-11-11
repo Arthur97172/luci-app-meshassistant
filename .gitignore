@@ -1,5 +1,4 @@
 # Local-only development material, not part of the published repository
-tests/
 docs/
 
 # Build and test artifacts

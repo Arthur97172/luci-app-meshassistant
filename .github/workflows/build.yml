@@ -13,7 +13,23 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run test suite
+        run: node tests/run.js
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

@@ -504,3 +504,12 @@ msgstr "较差 RSSI 阈值（%s）"
 
 msgid "Leave empty to use the shared threshold above."
 msgstr "留空则使用上方的公共阈值。"
+
+msgid "DHCP DNS Server"
+msgstr "DHCP 下发的 DNS 服务器"
+
+msgid "The DNS server that DHCP clients receive as DHCP option 6. Leave it empty to let dnsmasq advertise this router."
+msgstr "通过 DHCP 选项 6 下发给客户端的 DNS 服务器。留空则仍由 dnsmasq 通告本机地址。"
+
+msgid "This node has no DHCP lease on its LAN interface. Check the uplink cable or the DHCP service on the server."
+msgstr "本节点的 LAN 接口未获得 DHCP 租约。请检查上联网线或服务器上的 DHCP 服务。"
