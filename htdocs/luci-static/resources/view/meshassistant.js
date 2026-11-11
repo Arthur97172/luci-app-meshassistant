@@ -554,6 +554,53 @@ function renderClients(result) {
 }
 
 /*
+ * hostapd's transition counters for the AP interfaces of this device.  The
+ * counters are cumulative since hostapd started, so they show whether
+ * 802.11k neighbor reports and 802.11v steering requests actually happen; a
+ * counter that stays at zero while clients move points at a missing wpad
+ * feature rather than at DAWN's thresholds.
+ */
+function renderRoaming(rows) {
+	if (!rows || !rows.length)
+		return null;
+
+	const titles = [
+		_('Interface'),
+		_('Frequency'),
+		_('Neighbor Reports'),
+		_('Steering Requests'),
+		_('Steering Responses')
+	];
+
+	const table = E('div', {
+		'class': 'table meshassistant-status-table meshassistant-roaming-table'
+	}, [
+		E('div', { 'class': 'tr table-titles' },
+			titles.map(function(title) {
+				return E('div', { 'class': 'th' }, [ title ]);
+			}))
+	]);
+
+	for (const row of rows) {
+		table.appendChild(E('div', { 'class': 'tr' }, [
+			statusCell(titles[0], row.iface),
+			statusCell(titles[1], row.freq == null ? '' : row.freq + ' MHz'),
+			statusCell(titles[2], row.nr),
+			statusCell(titles[3], row.btmTx),
+			statusCell(titles[4], row.btmRx)
+		]));
+	}
+
+	return E('div', { 'class': 'cbi-section' }, [
+		E('h3', {}, [ _('Roaming Activity') ]),
+		E('div', { 'class': 'cbi-section-descr' }, [
+			_('Cumulative 802.11k/v transition counters since hostapd started.')
+		]),
+		E('div', { 'class': 'meshassistant-status-scroll' }, [ table ])
+	]);
+}
+
+/*
  * Point out when the hardware could do 802.11k/v but client roaming is still
  * off, and when the switch is on while something needed for steering is
  * missing.  This keeps the feature discoverable without turning it on by
@@ -690,7 +737,8 @@ function renderStatus(status, capabilities, dawnUnstable) {
 
 	return E('div', { 'class': 'meshassistant-status-sections' }, [
 		E('div', { 'class': 'cbi-section' }, children),
-		renderClients(status.clients)
+		renderClients(status.clients),
+		renderRoaming(status.roaming)
 	]);
 }
 
@@ -706,9 +754,14 @@ function readMeshStatus() {
 		fs.exec(BATCTL, [ 'n' ]).catch(() => null),
 		fs.read(PEERS_FILE).catch(() => ''),
 		fs.exec(SCRIPT, [ 'linkinfo' ]).catch(() => null),
-		fs.exec(BATCTL, [ 'o' ]).catch(() => null)
-	]).then(function([ reply, peers, linkReply, originatorReply ]) {
-		return utils.parseStatus(reply, peers, linkReply, originatorReply);
+		fs.exec(BATCTL, [ 'o' ]).catch(() => null),
+		fs.exec(SCRIPT, [ 'roaming' ]).catch(() => null)
+	]).then(function([ reply, peers, linkReply, originatorReply, roamingReply ]) {
+		const status = utils.parseStatus(reply, peers, linkReply, originatorReply);
+
+		status.roaming = utils.parseRoaming(roamingReply);
+
+		return status;
 	});
 }
 
@@ -868,7 +921,7 @@ return view.extend({
 	freqList: [],
 	countryList: [],
 	wiredPorts: [],
-	status: { ok: true, rows: [], clients: { ok: true, clients: [] } },
+	status: { ok: true, rows: [], clients: { ok: true, clients: [] }, roaming: [] },
 	capabilities: null,
 	dawnUnstable: false,
 	logText: '',
@@ -890,9 +943,10 @@ return view.extend({
 				fs.read(LOG_FILE).catch(() => ''),
 				fs.exec(BATCTL, [ 'o' ]).catch(() => null),
 				fs.exec(SCRIPT, [ 'capabilities' ]).catch(() => null),
-				fs.exec(SCRIPT, [ 'clients' ]).catch(() => null)
+				fs.exec(SCRIPT, [ 'clients' ]).catch(() => null),
+				fs.exec(SCRIPT, [ 'roaming' ]).catch(() => null)
 			]);
-		}).then(([ devices, reply, lanStatus, peers, linkReply, logText, originatorReply, capsReply, clientsReply ]) => {
+		}).then(([ devices, reply, lanStatus, peers, linkReply, logText, originatorReply, capsReply, clientsReply, roamingReply ]) => {
 			this.radios = devices.length
 				? radioOptions(devices)
 				: uci.sections('wireless', 'wifi-device').map(function(s) {
@@ -918,6 +972,7 @@ return view.extend({
 
 			this.status = utils.parseStatus(reply, peers, linkReply, originatorReply);
 			this.status.clients = utils.parseClients(clientsReply);
+			this.status.roaming = utils.parseRoaming(roamingReply);
 			this.status.updated = Date.now();
 			this.status.stale = false;
 			this.capabilities = parseCapabilities(capsReply);
@@ -1189,6 +1244,40 @@ return view.extend({
 			};
 		});
 
+		/*
+		 * The channel plan spreads the nodes of this mesh over channels that
+		 * do not overlap.  Every node sorts the same node names and takes
+		 * its slot from its position in that order, so the suggestions
+		 * agree without the nodes talking to each other.  Radios carrying
+		 * the mesh backhaul are left alone, and 6 GHz stays out because its
+		 * few non-overlapping channels cannot hold three nodes.
+		 */
+		const planLocal = this.status.local && this.status.local.length
+			? utils.deviceKey(this.status.local[0]) : '';
+		const planSeen = new Set();
+		const planNodes = [];
+
+		for (const row of [].concat(this.status.rows || [], this.status.local || [])) {
+			const name = utils.deviceKey(row);
+
+			if (name && !planSeen.has(name)) {
+				planSeen.add(name);
+				planNodes.push(name);
+			}
+		}
+
+		const meshRadio = uci.get('meshassistant', 'config', 'apRadio');
+		const channelPlan = utils.channelPlan(planNodes, planLocal,
+			spectrumRadios.map(function(entry) {
+				const htmode = parseHtmode(uci.get('wireless', entry.radio, 'htmode'));
+
+				return {
+					band: entry.band,
+					width: htmode.width || 20,
+					mesh: entry.radio === meshRadio
+				};
+			}));
+
 		/* A single-radio device keeps a plain band heading instead. */
 		if (spectrumRadios.length === 1 && spectrumRadios[0].band) {
 			const bandHeader = s.taboption('spectrum', form.DummyValue,
@@ -1341,6 +1430,24 @@ return view.extend({
 
 			countryOpt.default = '';
 
+			const recommendation = channelPlan.find(function(entry) {
+				return entry.band === band;
+			});
+
+			if (recommendation) {
+				const planOpt = s.taboption('spectrum', form.DummyValue,
+					'spectrum_' + radio + '_plan', '', '');
+
+				/*
+				 * Share the shared-settings hint class so the box aligns
+				 * with it and gets the same fit-content border.
+				 */
+				planOpt.default = '<p class="meshassistant-note meshassistant-spectrum-hint meshassistant-spectrum-plan">%s</p>'
+					.format(_('Suggested channel for this node: %s (%s MHz).')
+						.format(recommendation.channel, recommendation.width));
+				planOpt.rawhtml = true;
+			}
+
 			addSpectrumHint(s, radio);
 		}
 
@@ -1370,6 +1477,27 @@ return view.extend({
 		o.default = '-88';
 		o.datatype = 'range(-120,-1)';
 		o.depends('kvr', '1');
+
+		/*
+		 * DAWN keeps a metric section per band.  An empty override makes
+		 * the band inherit the shared thresholds above, so the common case
+		 * stays one pair of numbers.
+		 */
+		for (const band of [ '2g', '5g', '6g' ]) {
+			o = s.taboption('advanced', form.Value, 'rssi_val_' + band,
+				_('Good RSSI Threshold (%s)').format(BAND_NAMES[band]),
+				_('Leave empty to use the shared threshold above.'));
+			o.default = '';
+			o.datatype = 'range(-120,-1)';
+			o.depends('kvr', '1');
+
+			o = s.taboption('advanced', form.Value, 'low_rssi_val_' + band,
+				_('Bad RSSI Threshold (%s)').format(BAND_NAMES[band]),
+				_('Leave empty to use the shared threshold above.'));
+			o.default = '';
+			o.datatype = 'range(-120,-1)';
+			o.depends('kvr', '1');
+		}
 
 		o = s.taboption('apmode', form.Value, 'hostname', _('Node Hostname'));
 		o.default = 'node2';

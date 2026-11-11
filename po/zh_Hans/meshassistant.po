@@ -477,3 +477,30 @@ msgstr "本机的 Mesh 网络已停用。"
 
 msgid "The last refresh failed; showing the status from %s."
 msgstr "最近一次刷新失败，以下是 %s 的状态。"
+
+msgid "Roaming Activity"
+msgstr "漫游活动"
+
+msgid "Cumulative 802.11k/v transition counters since hostapd started."
+msgstr "自 hostapd 启动以来的 802.11k/v 切换计数器。主机仍在移动但计数不变，说明 wpad 缺少相应功能，而不是 DAWN 阈值设置不当。"
+
+msgid "Neighbor Reports"
+msgstr "邻居报告"
+
+msgid "Steering Requests"
+msgstr "引导请求"
+
+msgid "Steering Responses"
+msgstr "引导响应"
+
+msgid "Suggested channel for this node: %s (%s MHz)."
+msgstr "本节点建议信道：%s（%s MHz）。"
+
+msgid "Good RSSI Threshold (%s)"
+msgstr "良好 RSSI 阈值（%s）"
+
+msgid "Bad RSSI Threshold (%s)"
+msgstr "较差 RSSI 阈值（%s）"
+
+msgid "Leave empty to use the shared threshold above."
+msgstr "留空则使用上方的公共阈值。"

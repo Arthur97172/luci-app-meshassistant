@@ -949,6 +949,89 @@ return baseclass.extend({
 		return { ok: ok, clients: clients };
 	},
 
+	/*
+	 * "roaming" prints hostapd's transition counters per BSS:
+	 *   bss <iface> <freq> <neighbor_report_tx> <bss_transition_request_tx> <bss_transition_response_rx>
+	 * A counter hostapd does not expose is printed as "-" and stays null, so
+	 * the view can show the interface without inventing a zero.
+	 */
+	parseRoaming(reply) {
+		const ok = !!(reply && reply.code === 0);
+		const text = (ok && reply.stdout) || '';
+		const rows = [];
+
+		for (const line of text.split(/\r?\n/)) {
+			const parts = line.trim().split(/\s+/);
+
+			if (parts.length < 6 || parts[0] !== 'bss')
+				continue;
+
+			const number = function(value) {
+				return /^\d+$/.test(value) ? Number(value) : null;
+			};
+
+			rows.push({
+				iface: clean(parts[1]),
+				freq: /^\d+$/.test(parts[2]) ? Number(parts[2]) : null,
+				nr: number(parts[3]),
+				btmTx: number(parts[4]),
+				btmRx: number(parts[5])
+			});
+		}
+
+		return rows;
+	},
+
+	channelPlan(nodes, localName, radios) {
+		const names = (nodes || []).map(clean).sort();
+		const self = clean(localName);
+		const index = Math.max(0, names.indexOf(self));
+		const count = Math.max(names.length, 1);
+		const plan = [];
+
+		for (const radio of (radios || [])) {
+			const band = radio && radio.band;
+
+			if (band !== '2g' && band !== '5g')
+				continue;
+			if (radio.mesh)
+				continue;
+
+			const slot = this.channelSlots(band, radio.width, count);
+
+			plan.push({
+				band: band,
+				width: slot.width,
+				channel: slot.channels[index % slot.channels.length],
+				count: count,
+				index: index
+			});
+		}
+
+		return plan;
+	},
+
+	channelSlots(band, width, count) {
+		const tables = band === '2g'
+			? [
+				{ width: 40, channels: [ '1', '11' ] },
+				{ width: 20, channels: [ '1', '6', '11' ] }
+			]
+			: [
+				{ width: 160, channels: [ '36', '100' ] },
+				{ width: 80, channels: [ '36', '100', '149' ] },
+				{ width: 40, channels: [ '36', '44', '149', '157' ] },
+				{ width: 20, channels: [ '36', '44', '48', '149', '153', '157', '161' ] }
+			];
+
+		for (const table of tables) {
+			if (table.width <= width && table.channels.length >= count)
+				return table;
+		}
+
+		return tables[tables.length - 1];
+	},
+
 	parseStatus(reply, peerText, linkReply, originatorReply) {
 		const active = this.parseMeshState(linkReply);
 

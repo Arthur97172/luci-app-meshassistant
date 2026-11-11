@@ -83,6 +83,16 @@ html.dark .meshassistant-note {
 }
 
 /*
+ * The channel recommendation reuses the hint box and sits directly above the
+ * shared-settings hint, so their stacked margins open a wider gap than the
+ * notes elsewhere.  Drop the recommendation's bottom margin: the hint below
+ * keeps its own 8px top margin for the gap.
+ */
+.meshassistant-spectrum-pane .meshassistant-spectrum-plan {
+	margin-bottom: 0;
+}
+
+/*
  * The sub-tab menu of the Spectrum Settings page, one tab per radio
  * interface.  It is styled here instead of with the theme's cbi-tabmenu
  * classes so the tabs keep their names and their size in every theme and in

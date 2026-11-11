@@ -475,3 +475,30 @@ msgstr ""
 
 msgid "The last refresh failed; showing the status from %s."
 msgstr ""
+
+msgid "Roaming Activity"
+msgstr ""
+
+msgid "Cumulative 802.11k/v transition counters since hostapd started."
+msgstr ""
+
+msgid "Neighbor Reports"
+msgstr ""
+
+msgid "Steering Requests"
+msgstr ""
+
+msgid "Steering Responses"
+msgstr ""
+
+msgid "Suggested channel for this node: %s (%s MHz)."
+msgstr ""
+
+msgid "Good RSSI Threshold (%s)"
+msgstr ""
+
+msgid "Bad RSSI Threshold (%s)"
+msgstr ""
+
+msgid "Leave empty to use the shared threshold above."
+msgstr ""

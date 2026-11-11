@@ -1350,6 +1350,31 @@ wnm_supported() {
 # has 802.11v, dawn whether DAWN is installed, dawn_running whether its procd
 # instance is up, dawn_restarts how often procd has respawned it (omitted when
 # procd cannot report the count).
+# Read-only report of hostapd's transition counters, one line per BSS:
+#   bss <iface> <freq> <neighbor_report_tx> <bss_transition_request_tx> <bss_transition_response_rx>
+# The counters tell the status page whether 802.11k neighbor reports and
+# 802.11v steering requests actually reach clients.  A counter the running
+# hostapd does not expose is printed as "-" so the row stays honest.
+roaming_report() {
+    local iface status freq nr tx rx
+
+    for iface in $(ubus list 'hostapd.*' 2>/dev/null); do
+        iface=${iface#hostapd.}
+        status=$(ubus call "hostapd.$iface" get_status 2>/dev/null) || continue
+
+        freq=$(printf '%s\n' "$status" | jsonfilter -e '@.freq' 2>/dev/null)
+        nr=$(printf '%s\n' "$status" |
+            jsonfilter -e '@.rrm.neighbor_report_tx' 2>/dev/null)
+        tx=$(printf '%s\n' "$status" |
+            jsonfilter -e '@.wnm.bss_transition_request_tx' 2>/dev/null)
+        rx=$(printf '%s\n' "$status" |
+            jsonfilter -e '@.wnm.bss_transition_response_rx' 2>/dev/null)
+
+        printf 'bss %s %s %s %s %s\n' \
+            "$iface" "${freq:--}" "${nr:--}" "${tx:--}" "${rx:--}"
+    done
+}
+
 capabilities() {
     local kvr=0 wnm=0 dawn=0 dawn_running=0 restarts=""
 
@@ -1805,7 +1830,7 @@ dawn_release() {
 # in effect.  This function makes the running service match the form.  The
 # first pre-existing configuration is kept aside for dawn_release().
 setup_dawn() {
-    local kvr rssi low secret shared band
+    local kvr rssi low secret shared band suffix good bad
 
     kvr=$(uci -q get meshassistant.config.kvr)
     [ -n "$kvr" ] || kvr=0
@@ -1836,11 +1861,13 @@ setup_dawn() {
     fi
 
     # DAWN looks the global metric section up by the name "global" and the
-    # band sections by "802_11g"/"802_11a"; a config that lacks them (for
-    # example after a release removed the file) gets the named sections back.
+    # band sections by "802_11g" (2.4 GHz), "802_11a" (5 GHz) and "802_11ax"
+    # (6 GHz); a config that lacks them (for example after a release removed
+    # the file) gets the named sections back.
     [ -n "$(uci -q get dawn.global)" ] || uci set dawn.global='metric'
     [ -n "$(uci -q get dawn.802_11g)" ] || uci set dawn.802_11g='metric'
     [ -n "$(uci -q get dawn.802_11a)" ] || uci set dawn.802_11a='metric'
+    [ -n "$(uci -q get dawn.802_11ax)" ] || uci set dawn.802_11ax='metric'
 
     # The network section is different: DAWN takes the first "config network"
     # section whether it is named or anonymous, and the stock file ships an
@@ -1866,10 +1893,22 @@ setup_dawn() {
     uci set dawn.global.min_number_to_kick='3'
     uci set dawn.global.set_hostapd_nr='1'
     uci set dawn.global.duration='150'
-    for band in 802_11g 802_11a; do
-        uci set dawn.$band.rssi_val="$rssi"
-        uci set dawn.$band.low_rssi_val="$low"
-        uci set dawn.$band.rssi_center="$low"
+    # Each band may override the shared thresholds; an unset override keeps
+    # the shared value, so the common form stays the default and only the
+    # bands the user tuned differ.
+    for band in 802_11g 802_11a 802_11ax; do
+        case "$band" in
+            802_11g) suffix=2g ;;
+            802_11a) suffix=5g ;;
+            802_11ax) suffix=6g ;;
+        esac
+        good=$(uci -q get meshassistant.config.rssi_val_$suffix)
+        [ -n "$good" ] || good=$rssi
+        bad=$(uci -q get meshassistant.config.low_rssi_val_$suffix)
+        [ -n "$bad" ] || bad=$low
+        uci set dawn.$band.rssi_val="$good"
+        uci set dawn.$band.low_rssi_val="$bad"
+        uci set dawn.$band.rssi_center="$bad"
     done
     uci set dawn.@network[0].shared_key="$shared"
 
@@ -3330,6 +3369,11 @@ fi
 
 if [ "$1" = "capabilities" ]; then
     capabilities
+    exit 0
+fi
+
+if [ "$1" = "roaming" ]; then
+    roaming_report
     exit 0
 fi
 
