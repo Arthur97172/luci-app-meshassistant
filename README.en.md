@@ -31,6 +31,8 @@ The package lives under **Network → Mesh Assistant**
 | Backup management | The **Backup Management** tab creates, restores, deletes and clears whole-configuration snapshots; **Save & Apply** archives the pre-save configuration automatically, and archives live in `/etc/meshassistant/backup` |
 | Dumb AP mode | Turns a node into a dumb access point attached to an existing network (changes the management address; asks for confirmation first) |
 | DHCP reuse | The server can provide or skip DHCP/IPv6 RA, so an existing LAN DHCP server can stay in charge |
+| DHCP DNS (option 6) | The server can set the DNS server DHCP clients receive by writing DHCP option 6 on the LAN; empty keeps dnsmasq advertising the router itself. Option 6 entries found before the apply are recorded and restored when the mesh is disabled |
+| Lease check | When a node/client joins in DHCP mode, a background check after the apply confirms the LAN got a lease: the address is logged when there is one, and a missing lease is written to the run log and shown as a warning on **Mesh Status**, pointing at the uplink cable or the server's DHCP service |
 | Internationalization | English and Simplified Chinese; Chinese ships as a separate language pack |
 | Light / dark | Follows the LuCI theme automatically, no manual switch |
 
@@ -91,7 +93,9 @@ and `luci-i18n-meshassistant-zh-cn` are produced together.
    radios use the same WiFi Network SSID. With two radios selected, **Enable
    MLO** combines them into a single Wi-Fi 7 multi-link access point (the
    radios switch to EHT mode). Every device must use the same mesh radio,
-   mesh SSID and password.
+   mesh SSID and password. The server can also set **DHCP DNS Server** in
+   **Basic Setup** to choose the DNS server sent to clients as DHCP option 6;
+   leaving it empty keeps advertising the server itself.
 3. For a Node or Client, open **AP Mode** and set the hostname and IP: use DHCP
    when a DHCP server exists on the LAN, or a static IP when there is none or
    you need a stable management address. **Every device must have a unique
@@ -222,16 +226,18 @@ for details.
   that MAC (older devices). In that case two devices with the same name merge
   into a single entry and the active node count comes out too low.
 - **Node / Client**: no DHCP or NAT is provided. Use a static IP in **AP Mode**
-  when there is no DHCP server or you need a fixed management address. Remove
-  or disable any old `wwan` STA so the node does not keep a competing default
-  route.
+  when there is no DHCP server or you need a fixed management address. In DHCP
+  mode the script checks the LAN for a lease after the apply and warns on
+  **Mesh Status** and in the run log when there is none. Remove or disable any
+  old `wwan` STA so the node does not keep a competing default route.
 - **Dumb AP mode** changes the management address, removes WAN and disables the
   firewall and DHCP services. The button asks for confirmation first. Back up
   the configuration and make sure you have physical access; undo it with
   `bash /etc/meshassistant/shell/meshassistant.sh undumb`.
 - **Reversible**: enabling/disabling the mesh, wired backhaul ports and node
-  LAN/hostname values are backed up and restored. Installing or booting never
-  changes the network; the default configuration is `enabled=0`.
+  LAN/hostname values are backed up and restored, and DHCP option 6 written by
+  the server is restored too. Installing or booting never changes the network;
+  the default configuration is `enabled=0`.
 
 ## How it works and safety
 
@@ -282,6 +288,18 @@ Disabling the mesh only undoes changes the script recorded as its own.
 - `bash`: the configuration script is written in bash
 - At least one radio supporting 802.11s mesh; a dual-band device is recommended,
   using one radio for the regular AP and the other for mesh backhaul
+
+## Development and testing
+
+The repository ships a dependency-free Node.js test suite:
+
+```sh
+node tests/run.js
+```
+
+It covers the configuration script, the page logic, utility functions,
+translations and packaging files. GitHub Actions runs the same suite before
+building a release, and a failing test stops the build.
 
 ## License
 

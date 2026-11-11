@@ -75,6 +75,7 @@ Menu entry: **Network → Mesh Assistant** (Chinese: **网络 → MESH助手**).
 | Enable Mesh Networking | Master switch. Saving only writes the form; click **Reapply meshassistant Settings** to apply it. |
 | Mesh Mode | Server / Node / Client. |
 | Server Provides DHCP | Server only. When enabled, the server provides DHCP and IPv6 RA. Disable it when another router on the LAN already provides DHCP. |
+| DHCP DNS Server | Server only, shown while **Server Provides DHCP** is on. The IPv4 address sent to clients as DHCP option 6 (for example `1.1.1.1`); when empty, dnsmasq keeps advertising the server itself. Option 6 entries found on the LAN before the apply are recorded in `meshassistant.config` and restored when the mesh is disabled; an invalid IPv4 value leaves the current advertisement untouched and is reported in the run log. |
 | WiFi Network SSID | Name of the regular WiFi access point. |
 | Regular AP Radio | Radio that carries the regular WiFi. Up to two of 2.4 GHz, 5 GHz and 6 GHz can be selected together, with all selected radios using the same WiFi Network SSID; 6 GHz starts as WPA3-only. |
 | Enable MLO | Shown only while exactly two regular AP radios are selected. Combines both radios into a single Wi-Fi 7 multi-link access point; the selected radios are switched to EHT mode, because MLO requires every link to be 802.11be. |
@@ -117,6 +118,8 @@ Turning roaming off or removing the package stops and disables DAWN when the plu
 2. Click **Reapply meshassistant Settings**. The script creates another automatic backup before changing anything, then creates/removes interfaces, changes the LAN, and starts or stops services. Its output goes to `/tmp/meshassistant.log`.
 3. Recommended order: **server first, then nodes**. The server forms the mesh gateway; nodes can only join once it exists.
 4. Networking and wireless restart during the apply, so the page may disconnect briefly. Reconnect and refresh once the restart has finished.
+
+When a node or client joins in DHCP mode, the script also checks the LAN for an IPv4 lease in the background about 30 seconds after the apply (`MESHASSISTANT_DHCP_WATCHDOG_DELAY` changes the delay; `0` disables the check): the address is recorded in the run log when there is one, and a missing lease is written as a warning and shown as a hint on **Mesh Status**. The check only reports the problem; it does not repair anything.
 
 ## 3. Server uplink modes and per-role configuration details
 
@@ -224,7 +227,7 @@ Nodes and Clients do not provide DHCP and do not perform NAT. They disable `fire
   - a Server role with **Server Provides DHCP** enabled; or
   - another router already on the LAN.
 
-  In DHCP mode the gateway is chosen by the server and cannot be set separately. **DNS Server** is optional: empty keeps the advertised DNS servers, a value replaces them completely (the script sets `list dns` and `peerdns=0`).
+  In DHCP mode the gateway is chosen by the server and cannot be set separately. **DNS Server** is optional: empty keeps the advertised DNS servers, a value replaces them completely (the script sets `list dns` and `peerdns=0`). After the apply the script checks the LAN for a lease and warns in the run log and on **Mesh Status** when there is none.
 - **Static**: the script sets the node LAN to a static address using the address, netmask, gateway and DNS you enter.
 
 ### 4.2 When to use a static IP
@@ -388,6 +391,7 @@ logread | tail -50
 | Traffic still uses wireless while the cable is connected | Cable is down or failed to negotiate; both ends are not configured; the other end is not a mesh device | Check the cable, both configurations and the log |
 | Address changed after disabling the mesh | The script restored the pre-enable LAN address; this is expected | Reconnect at the original address |
 | Firewall/DHCP services disappeared on a node | Nodes disable `firewall`, `dnsmasq` and `odhcpd`; this is normal | Disabling the mesh or switching back to Server restores them |
+| **Mesh Status** says this node has no DHCP lease | In DHCP mode the LAN got no address after the apply: uplink cable unplugged, no DHCP server upstream, or the server's **Server Provides DHCP** is off | Check the cable and the server's DHCP leases; switch to a static IP if it cannot be recovered |
 
 ### 7.4 Reading the log
 
@@ -397,6 +401,8 @@ dropped once it passes 256 KiB). It records:
 - wireless interfaces created or removed;
 - LAN address and hostname changes;
 - wired backhaul ports removed and restored;
+- DHCP option 6 written or restored by the server (**DHCP DNS Server**);
+- the lease check after an apply in DHCP mode (the address, or the no-lease warning);
 - port validation failures and fallback to wireless backhaul;
 - backups created, restored, deleted or cleared from the **Backup Management** tab.
 
@@ -575,7 +581,7 @@ Set A's LAN address in advance under **Network → Interfaces → LAN**; the Ser
 1. Turn off **Enable Mesh Networking**.
 2. Click **Save & Apply**, then **Reapply meshassistant Settings**.
 
-The script removes the mesh/AP interfaces, deletes `bat0` and `mesh_batman`, returns the wired backhaul port to `br-lan`, and restores the pre-enable LAN address, hostname, DHCP/RA settings and the services it disabled.
+The script removes the mesh/AP interfaces, deletes `bat0` and `mesh_batman`, returns the wired backhaul port to `br-lan`, and restores the pre-enable LAN address, hostname, DHCP/RA settings (including DHCP option 6 written by the server) and the services it disabled.
 
 ### 9.2 Undo Dumb AP mode
 
