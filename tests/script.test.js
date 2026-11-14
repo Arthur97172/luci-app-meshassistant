@@ -306,6 +306,14 @@ setup_ap_radios >/dev/null 2>&1
 echo "fallback_ap0_ssid=$(get_or_unset wireless.wifi_ap_radio0.ssid)"
 echo "fallback_ap1_ssid=$(get_or_unset wireless.wifi_ap_radio1.ssid)"
 
+# 4b4. A band-split radio section such as radio0_band2 must not end up with a
+#      netdev name over the kernel's 15-byte limit: netifd rejected
+#      mesh_radio0_band2 and the mesh vif never got a netdev.
+reset_cfg
+setup_mesh_radio radio0_band2 >/dev/null 2>&1
+echo "band_mesh_section=$(get_or_unset wireless.mesh_radio0_band2)"
+echo "band_mesh_ifname=$(get_or_unset wireless.mesh_radio0_band2.ifname)"
+
 # 4b3. Same mode ignores per-radio SSIDs; MLO still uses the shared SSID.
 reset_cfg
 uci set meshassistant.config.wifi_radio='radio0 radio1'
@@ -1948,6 +1956,11 @@ function run() {
 		'an unset per-radio SSID falls back to the shared SSID');
 	lib.eq(values.fallback_ap1_ssid, 'ap_5g',
 		'a configured per-radio SSID is still used');
+	lib.eq(values.band_mesh_section, 'wifi-iface', 'a band-split radio gets a mesh section');
+	lib.eq(values.band_mesh_ifname, 'mesh_2',
+		'a band-split radio derives the ifname from the band');
+	lib.ok(values.band_mesh_ifname.length <= 15,
+		'the mesh ifname fits the kernel netdev limit', values.band_mesh_ifname);
 	lib.eq(values.same_ap0_ssid, 'meshassistant_AC',
 		'same mode ignores per-radio SSIDs');
 	lib.eq(values.same_ap1_ssid, 'meshassistant_AC',

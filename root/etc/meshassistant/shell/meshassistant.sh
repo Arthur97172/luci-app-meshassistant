@@ -1883,9 +1883,17 @@ setup_mesh_radio() {
     if [ ! -z "$CURRENT_RADIO" ]; then
         echo "Configuring Mesh AP on $CURRENT_RADIO"
 
+        # Linux netdev names are capped at IFNAMSIZ-1 = 15 bytes and netifd
+        # refuses anything longer ("Cannot set device name ... longer than max
+        # size 15"), leaving the mesh vif without a netdev.  Band-split radio
+        # sections ("radio0_band2") would produce mesh_radio0_band2 (17), so
+        # use the band tail when the section carries one and clamp the rest.
+        local mesh_ifname="mesh_${CURRENT_RADIO##*_band}"
+        mesh_ifname="${mesh_ifname:0:15}"
+
         uci set wireless.mesh_$CURRENT_RADIO='wifi-iface'
         uci set wireless.mesh_$CURRENT_RADIO.device="$CURRENT_RADIO"
-        uci set wireless.mesh_$CURRENT_RADIO.ifname="mesh_$CURRENT_RADIO"
+        uci set wireless.mesh_$CURRENT_RADIO.ifname="$mesh_ifname"
         uci set wireless.mesh_$CURRENT_RADIO.network='mesh_batman'
         uci set wireless.mesh_$CURRENT_RADIO.mode='mesh'
         uci set wireless.mesh_$CURRENT_RADIO.mesh_id="$MESH_SSID"
