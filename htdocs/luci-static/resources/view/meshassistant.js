@@ -2164,7 +2164,21 @@ return view.extend({
 				return fs.read(LOG_FILE).then((text) => {
 					this.logText = text || '';
 					logContent.textContent = this.logText || _('No log entries.');
-				}).catch(function(err) {
+				}).catch((err) => {
+					/*
+					 * /tmp is cleared on every boot and the run log only
+					 * appears once a detached run or a backup action writes
+					 * it, so a missing file just means there is nothing to
+					 * show.  LuCI reports it as NotFoundError (-2); treat it
+					 * like the initial load does instead of showing an error.
+					 */
+					if (err != null &&
+					    (err.name === 'NotFoundError' || err.code === -2)) {
+						this.logText = '';
+						logContent.textContent = _('No log entries.');
+						return;
+					}
+
 					ui.addNotification(null, E('p', [
 						_('Failed to refresh the log: %s').format(err)
 					]), 'error');

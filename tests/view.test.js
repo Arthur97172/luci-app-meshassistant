@@ -557,6 +557,17 @@ function loadView(opts) {
 		read(path) {
 			registry.reads.push(path);
 
+			if (opts.missingFiles && opts.missingFiles.indexOf(path) !== -1) {
+				/*
+				 * LuCI rejects a missing file with its fs error object:
+				 * name NotFoundError, code -2 (ENOENT).
+				 */
+				const err = new Error('Resource not found');
+				err.name = 'NotFoundError';
+				err.code = -2;
+				return Promise.reject(err);
+			}
+
 			if (opts.readReject)
 				return Promise.reject(new Error('read denied'));
 
@@ -1658,6 +1669,56 @@ async function run() {
 			'the refresh button shows the latest log content');
 		lib.eq(t.registry.notifications.length, 0,
 			'refreshing the log succeeds silently');
+	}
+
+	{
+		/*
+		 * After a reboot /tmp is empty and nothing has written the run log
+		 * yet; clicking Refresh Log used to show "Failed to refresh the
+		 * log: NotFoundError" while the initial load showed the empty-log
+		 * text for the same missing file.
+		 */
+		const t = loadView({
+			devices: DEVICES,
+			execReply: { code: 0, stdout: NEIGHBORS },
+			missingFiles: [ '/tmp/meshassistant.log' ]
+		});
+
+		await t.view.load();
+		const root = await t.view.render();
+
+		const refreshBtn = nodesByTag(root, 'button').find(function(button) {
+			return textOf(button) === 'Refresh Log';
+		});
+
+		lib.ok(refreshBtn != null, 'the refresh log button is present without a log file');
+
+		await refreshBtn.attrs.click({});
+
+		lib.eq(t.registry.notifications.length, 0,
+			'refreshing a missing run log does not report an error');
+		lib.eq(nodesByTag(root, 'pre')[0].textContent, 'No log entries.',
+			'a missing run log shows the empty-log placeholder');
+	}
+
+	{
+		const t = loadView({
+			devices: DEVICES,
+			readReject: true,
+			execReply: { code: 0, stdout: NEIGHBORS }
+		});
+
+		await t.view.load();
+		const root = await t.view.render();
+
+		const refreshBtn = nodesByTag(root, 'button').find(function(button) {
+			return textOf(button) === 'Refresh Log';
+		});
+
+		await refreshBtn.attrs.click({});
+
+		lib.eq(t.registry.notifications.length, 1,
+			'a log read error other than a missing file is still reported');
 	}
 
 	{
