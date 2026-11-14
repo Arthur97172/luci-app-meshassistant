@@ -106,8 +106,8 @@ msgstr "启用此开关后，加入 Mesh 网络需要密码。"
 msgid "Encryption Type"
 msgstr "加密类型"
 
-msgid "Encryption used by the WiFi access points. The mesh backhaul always uses WPA3-SAE and is not affected by this setting. A 6 GHz radio allows WPA3 only, so the selected mode is mapped to its WPA3 equivalent there."
-msgstr "普通 WiFi 接入点使用的加密方式。Mesh 回程始终使用 WPA3-SAE，不受此项影响。6 GHz 射频只能使用 WPA3，所选模式在 6 GHz 上会映射为对应的 WPA3 模式。"
+msgid "Encryption used by the WiFi access points. The mesh backhaul always uses WPA3-SAE and is not affected by this setting. A 6 GHz radio supports WPA3 only, so the selected mode is mapped automatically to its WPA3 equivalent; modes the installed wpad build cannot provide are hidden."
+msgstr "普通 WiFi 接入点使用的加密方式。Mesh 回程始终使用 WPA3-SAE，不受此设置影响。6 GHz 射频仅支持 WPA3，所选模式会自动映射为对应的 WPA3 模式；固件不支持的模式不会显示。"
 
 msgid "Ensure that the SSID is the same across all the servers/nodes in your mesh network."
 msgstr "确保 Mesh 网络中所有服务器/节点使用相同的 SSID。"

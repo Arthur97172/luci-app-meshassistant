@@ -829,7 +829,10 @@ function parseCapabilities(reply) {
 	const text = (reply && reply.stdout) || '';
 	/* The probe prints switches and counters alike; only these keys are
 	 * booleans, everything else is a number (the DAWN respawn count). */
-	const flags = new Set([ 'kvr', 'wnm', 'dawn', 'dawn_running' ]);
+	const flags = new Set([
+		'kvr', 'wnm', 'dawn', 'dawn_running',
+		'sae', 'eap', 'owe', 'sae_compat'
+	]);
 
 	for (const line of text.split(/\r?\n/)) {
 		const match = /^([a-z_]+)=(-?\d+)$/.exec(line);
@@ -846,6 +849,40 @@ function parseCapabilities(reply) {
 		return null;
 
 	return caps;
+}
+
+/*
+ * The encryption modes the Encryption Type menu can offer from the installed
+ * hostapd/wpad build.  The script reports them itself because the feature
+ * list LuCI exposes differs between releases.  When the reply is missing (an
+ * older script, a transient exec failure) fall back to LuCI's own probe, and
+ * when even that is unavailable assume the mode is supported: the script
+ * downgrades an unsupported choice with a note in the run log, while hiding a
+ * working one would silently take it away.
+ */
+function encryptionCapabilities(caps) {
+	function has(name) {
+		if (caps && (name in caps))
+			return !!caps[name];
+
+		try {
+			if (typeof L.hasSystemFeature === 'function') {
+				const value = L.hasSystemFeature('hostapd', name);
+
+				return value == null ? true : !!value;
+			}
+		}
+		catch (e) {
+		}
+
+		return true;
+	}
+
+	return {
+		sae: has('sae'),
+		eap: has('eap'),
+		compat: has('sae_compat')
+	};
 }
 
 /*
@@ -1258,13 +1295,26 @@ return view.extend({
 		 * relying on the wifi stack, which differs between OpenWrt 24.10
 		 * (shell) and 25.x (ucode).
 		 */
-		o = s.taboption('setup', form.ListValue, 'encryption_type', _('Encryption Type'), _('Encryption used by the WiFi access points. The mesh backhaul always uses WPA3-SAE and is not affected by this setting. A 6 GHz radio allows WPA3 only, so the selected mode is mapped to its WPA3 equivalent there.'));
-		o.value('sae-mixed', 'WPA2-PSK/WPA3-SAE Mixed Mode');
-		o.value('sae-compat', 'WPA2-PSK/WPA3-SAE Compatibility Mode');
-		o.value('sae', 'WPA3-SAE');
+		o = s.taboption('setup', form.ListValue, 'encryption_type', _('Encryption Type'), _('Encryption used by the WiFi access points. The mesh backhaul always uses WPA3-SAE and is not affected by this setting. A 6 GHz radio supports WPA3 only, so the selected mode is mapped automatically to its WPA3 equivalent; modes the installed wpad build cannot provide are hidden.'));
+		const encCaps = encryptionCapabilities(this.capabilities);
+
+		/*
+		 * Compatibility Mode is an SAE mode as well, so it needs SAE too.
+		 * WPA2-PSK works with every wpad build and is always offered; the
+		 * default follows the same rule as the script's downgrade, so a
+		 * build without SAE starts on WPA2-PSK instead of a mode that would
+		 * be replaced right after saving.
+		 */
+		if (encCaps.sae) {
+			o.value('sae-mixed', 'WPA2-PSK/WPA3-SAE Mixed Mode');
+			if (encCaps.compat)
+				o.value('sae-compat', 'WPA2-PSK/WPA3-SAE Compatibility Mode');
+			o.value('sae', 'WPA3-SAE');
+		}
 		o.value('psk2', 'WPA2-PSK');
-		o.value('wpa2', 'WPA2-EAP (RADIUS)');
-		o.default = 'sae-mixed';
+		if (encCaps.eap)
+			o.value('wpa2', 'WPA2-EAP (RADIUS)');
+		o.default = encCaps.sae ? 'sae-mixed' : 'psk2';
 		o.rmempty = false;
 		o.depends('encryption', '1');
 

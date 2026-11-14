@@ -91,7 +91,10 @@ and `luci-i18n-meshassistant-zh-cn` are produced together.
    Regular AP Radio, Mesh Radio, Mesh Network SSID and password, then pick the
    **Encryption Type** for the regular WiFi (WPA2-PSK/WPA3-SAE mixed by
    default; WPA2-PSK/WPA3-SAE Compatibility Mode, WPA2-PSK, WPA3-SAE and
-   WPA2-EAP are also available). The mesh backhaul always uses WPA3-SAE and
+   WPA2-EAP are also available — the menu lists only the modes the installed
+   hostapd/wpad build supports, and the script also downgrades an unsupported
+   mode written by hand, with a note in the run log). The mesh backhaul always
+   uses WPA3-SAE and
    is not affected by this choice. A 6 GHz radio allows WPA3 only, so the
    selected mode is applied in its WPA3 form there (PSK modes become
    WPA3-SAE, WPA2-EAP becomes WPA3-EAP, an open network becomes OWE). The

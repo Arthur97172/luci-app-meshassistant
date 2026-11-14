@@ -68,7 +68,7 @@ lib.eq(acl.write.uci, [ 'meshassistant' ], 'write UCI grant');
 
 const mk = lib.read('Makefile');
 
-lib.ok(/^PKG_VERSION:=2\.8\.0$/m.test(mk), 'version is 2.8.0');
+lib.ok(/^PKG_VERSION:=2\.8\.1$/m.test(mk), 'version is 2.8.1');
 lib.ok(/^PKG_RELEASE:=1$/m.test(mk), 'release is 1');
 lib.ok(/^define Package\/luci-app-meshassistant\/postrm$/m.test(mk),
 	'uninstall hook is defined');

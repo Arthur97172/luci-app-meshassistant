@@ -72,7 +72,7 @@ make package/luci-app-meshassistant/compile V=s
 ## 快速开始
 
 1. 打开「网络 → MESH助手」，确定这台设备是「服务器」还是「节点」。一个 Mesh 中只应有一台服务器。
-2. 在「基础设置」中选择 Mesh 模式，填写 WiFi 网络 SSID、普通 AP 射频、Mesh 射频、Mesh 网络 SSID 和密码，并在「加密类型」中选择普通 WiFi 的加密方式（默认 WPA2-PSK/WPA3-SAE 混合模式，也可选 WPA2-PSK/WPA3-SAE 兼容模式、WPA2-PSK、WPA3-SAE 或 WPA2-EAP）；Mesh 回程始终使用 WPA3-SAE。普通 AP 射频可从 2.4 GHz、5 GHz、6 GHz 中选择最多两个射频，所选射频使用同一个 WiFi 网络 SSID；选择两个射频时可勾选「启用 MLO」，把两个射频合并为一个 Wi-Fi 7 多链路接入点（射频会自动切换为 EHT 模式）；6 GHz 按 WPA3 启动（所选加密方式在 6 GHz 射频上映射为对应的 WPA3 模式）；所有设备的 Mesh 射频、Mesh 网络 SSID、加密类型与密码必须一致。服务器还可在「基础设置」的「DHCP 下发的 DNS 服务器」中指定 DHCP 选项 6 下发给客户端的 DNS；留空则仍通告服务器自身。
+2. 在「基础设置」中选择 Mesh 模式，填写 WiFi 网络 SSID、普通 AP 射频、Mesh 射频、Mesh 网络 SSID 和密码，并在「加密类型」中选择普通 WiFi 的加密方式（默认 WPA2-PSK/WPA3-SAE 混合模式，也可选 WPA2-PSK/WPA3-SAE 兼容模式、WPA2-PSK、WPA3-SAE 或 WPA2-EAP；下拉菜单只列出当前固件的 hostapd/wpad 支持的模式，手工写入不支持的配置时脚本也会自动降级并在运行日志中说明）；Mesh 回程始终使用 WPA3-SAE。普通 AP 射频可从 2.4 GHz、5 GHz、6 GHz 中选择最多两个射频，所选射频使用同一个 WiFi 网络 SSID；选择两个射频时可勾选「启用 MLO」，把两个射频合并为一个 Wi-Fi 7 多链路接入点（射频会自动切换为 EHT 模式）；6 GHz 按 WPA3 启动（所选加密方式在 6 GHz 射频上映射为对应的 WPA3 模式）；所有设备的 Mesh 射频、Mesh 网络 SSID、加密类型与密码必须一致。服务器还可在「基础设置」的「DHCP 下发的 DNS 服务器」中指定 DHCP 选项 6 下发给客户端的 DNS；留空则仍通告服务器自身。
 3. 节点或客户端在「AP 模式」页设置主机名和 IP：LAN 上有 DHCP 服务器时可选 DHCP，没有 DHCP 或需要固定管理地址时选择静态 IP。**每台设备的主机名必须唯一**，Mesh 状态页用它识别设备。DNS 服务器在两种模式下都可填写：DHCP 下留空则使用下发的 DNS，填写后完全覆盖；静态下留空则保留 LAN 现有 DNS。
 4. 需要有线回程时，在网线两端设备的「有线回程端口」中选择相连的 LAN 网桥端口；纯无线回程保持「无」。
 5. 点击「保存并应用」，再点击「重新应用 MESH助手设置」。保存时会自动把保存前的配置备份到「备份管理」；建议先配置服务器，再配置节点；执行日志位于 `/tmp/meshassistant.log`。

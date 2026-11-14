@@ -1459,6 +1459,90 @@ wnm_supported() {
     [ "$MESHASSISTANT_WNM_OK" = 1 ]
 }
 
+# hostapd and wpad report their build-time features by appending the feature
+# name to -v; a compiled-in feature makes the daemon exit successfully.  The
+# stock Wireless page probes the same way, but that feature list is not
+# available on every release, so the plugin probes by itself.
+hostapd_feature() {
+    local feature="$1"
+
+    if [ -n "${MESHASSISTANT_HOSTAPD_FEATURES:-}" ]; then
+        case " $MESHASSISTANT_HOSTAPD_FEATURES " in
+            *" $feature "*) return 0 ;;
+            *) return 1 ;;
+        esac
+    fi
+
+    if [ -x /usr/sbin/hostapd ]; then
+        /usr/sbin/hostapd -v"$feature" >/dev/null 2>&1 && return 0
+    fi
+
+    if [ -x /usr/sbin/wpad ]; then
+        /usr/sbin/wpad hostapd -v"$feature" >/dev/null 2>&1 && return 0
+    fi
+
+    return 1
+}
+
+# The mode to use when the chosen one is not compiled into the installed
+# hostapd/wpad build: the mixed mode when SAE is available, WPA2-PSK
+# otherwise.
+fallback_encryption_type() {
+    if hostapd_feature sae; then
+        printf 'sae-mixed'
+    else
+        printf 'psk2'
+    fi
+}
+
+# A human-readable name for the run log.
+encryption_label() {
+    case "$1" in
+        sae-mixed) printf 'WPA2-PSK/WPA3-SAE mixed mode' ;;
+        sae-compat) printf 'WPA2-PSK/WPA3-SAE Compatibility Mode' ;;
+        sae) printf 'WPA3-SAE' ;;
+        psk2) printf 'WPA2-PSK' ;;
+        wpa2) printf 'WPA2-EAP' ;;
+        *) printf '%s' "$1" ;;
+    esac
+}
+
+# Compatibility Mode needs both halves of the stack: netifd must translate
+# sae-compat (the 24.10 shell stack and the 25.x ucode stack do, older
+# releases pass the value through and hostapd rejects it) and hostapd must
+# know the RSNE Override options it uses.
+sae_compat_supported() {
+    local stack=0 f
+
+    if [ -n "${MESHASSISTANT_SAE_COMPAT_OK:-}" ]; then
+        [ "$MESHASSISTANT_SAE_COMPAT_OK" = 1 ]
+        return
+    fi
+
+    for f in /usr/share/ucode/wifi/ap.uc /usr/share/ucode/wifi/iface.uc \
+             /lib/netifd/hostapd.sh /lib/netifd/netifd-wireless.sh; do
+        [ -f "$f" ] || continue
+        if grep -q 'sae-compat' "$f" 2>/dev/null; then
+            stack=1
+            break
+        fi
+    done
+    [ "$stack" = 1 ] || return 1
+
+    for f in /usr/sbin/wpad /usr/sbin/hostapd; do
+        [ -f "$f" ] || continue
+        if tr '\0' '\n' <"$f" 2>/dev/null | grep -qx 'rsn_override_key_mgmt'; then
+            return 0
+        fi
+    done
+
+    return 1
+}
+
+radio_is_6g() {
+    [ "$(uci -q get wireless.$1.band)" = '6g' ]
+}
+
 # Read-only report for the status page.  It runs the same wpad probe as an
 # apply, so the hint the page shows matches what enabling client roaming would
 # actually do: kvr is the roaming switch, wnm whether the installed wpad build
@@ -1492,9 +1576,14 @@ roaming_report() {
 
 capabilities() {
     local kvr=0 wnm=0 dawn=0 dawn_running=0 restarts=""
+    local sae=0 eap=0 owe=0 sae_compat=0
 
     [ "$(uci -q get meshassistant.config.kvr)" = 1 ] && kvr=1
     wnm_supported && wnm=1
+    hostapd_feature sae && sae=1
+    hostapd_feature eap && eap=1
+    hostapd_feature owe && owe=1
+    sae_compat_supported && sae_compat=1
     if [ -x /etc/init.d/dawn ]; then
         dawn=1
         # An installed but stopped service steers nothing, so the status
@@ -1510,6 +1599,8 @@ capabilities() {
 
     printf 'kvr=%s\nwnm=%s\ndawn=%s\ndawn_running=%s\n' \
         "$kvr" "$wnm" "$dawn" "$dawn_running"
+    printf 'sae=%s\neap=%s\nowe=%s\nsae_compat=%s\n' \
+        "$sae" "$eap" "$owe" "$sae_compat"
     if [ -n "$restarts" ]; then
         printf 'dawn_restarts=%s\n' "$restarts"
     fi
@@ -1807,6 +1898,7 @@ apply_spectrum_settings() {
 # key and KVR settings; the SSID is shared unless ssid_mode is 'separate'.
 setup_ap_radios() {
     local radio managed count=0 radio_ssid configured_ssid mobility_seed
+    local kept dropped ap_open needed needed_label
 
     WIFI_ID=$(uci -q get meshassistant.config.wifi_id)
     WIFI_RADIOS=$(uci -q get meshassistant.config.wifi_radio)
@@ -1821,7 +1913,7 @@ setup_ap_radios() {
     SSID_MODE=$(uci -q get meshassistant.config.ssid_mode)
     [ -z "$SSID_MODE" ] && SSID_MODE='same'
 
-    # The form offers these modes; the config can also be edited by hand, so
+    # The form hides these modes; the config can also be edited by hand, so
     # anything else falls back to the mixed mode the plugin used before the
     # choice existed.
     ENCRYPTION_TYPE=$(uci -q get meshassistant.config.encryption_type)
@@ -1835,13 +1927,38 @@ setup_ap_radios() {
     [ -n "$EAP_PORT" ] || EAP_PORT='1812'
     EAP_SECRET=$(uci -q get meshassistant.config.auth_secret)
 
+    # A mode the installed hostapd/wpad build does not support makes hostapd
+    # refuse to start, which takes the whole radio down, so downgrade it here
+    # as well instead of trusting the form.
+    if [ "$ENCRYPTION_ENABLED" = 1 ]; then
+        case "$ENCRYPTION_TYPE" in
+            sae|sae-mixed|sae-compat)
+                if ! hostapd_feature sae; then
+                    echo "The installed wpad build has no SAE support; using WPA2-PSK instead. The mesh backhaul needs SAE and will not work."
+                    ENCRYPTION_TYPE='psk2'
+                fi
+                ;;
+        esac
+
+        if [ "$ENCRYPTION_TYPE" = 'sae-compat' ] && ! sae_compat_supported; then
+            echo "The installed wifi stack does not support Compatibility Mode; using WPA2-PSK/WPA3-SAE mixed mode instead."
+            ENCRYPTION_TYPE='sae-mixed'
+        fi
+
+        if [ "$ENCRYPTION_TYPE" = 'wpa2' ] && ! hostapd_feature eap; then
+            ENCRYPTION_TYPE=$(fallback_encryption_type)
+            echo "The installed wpad build has no EAP support; using $(encryption_label "$ENCRYPTION_TYPE") instead."
+        fi
+    fi
+
     # hostapd refuses to start an AP whose WPA2-EAP configuration has no
     # RADIUS server, which would take the whole radio down.  Keep the AP up in
-    # the mixed PSK mode instead and leave a note in the run log.
+    # a PSK mode supported by this build instead and leave a note in the run
+    # log.
     if [ "$ENCRYPTION_ENABLED" = 1 ] && [ "$ENCRYPTION_TYPE" = 'wpa2' ] &&
        { [ -z "$EAP_SERVER" ] || [ -z "$EAP_SECRET" ]; }; then
-        echo "Warning: WPA2-EAP needs a RADIUS server and secret; using WPA2-PSK/WPA3-SAE mixed mode instead."
-        ENCRYPTION_TYPE='sae-mixed'
+        ENCRYPTION_TYPE=$(fallback_encryption_type)
+        echo "Warning: WPA2-EAP needs a RADIUS server and secret; using $(encryption_label "$ENCRYPTION_TYPE") instead."
     fi
 
     if [ -z "$WIFI_ID" ]; then
@@ -1859,6 +1976,48 @@ setup_ap_radios() {
         MOBILITY_DOMAIN=$(printf '%s' "$mobility_seed" | cksum | awk '{ printf "%04x", $1 % 65536 }')
         uci set meshassistant.config.mobility_domain="$MOBILITY_DOMAIN"
         echo "Mobility domain derived from the Mesh SSID: $MOBILITY_DOMAIN"
+    fi
+
+    # A 6 GHz BSS may not be open, and it is written as OWE, SAE or WPA3-EAP
+    # depending on the mode.  A wpad build without the matching feature
+    # (some mesh variants, including the one on the 25.x test node, lack OWE)
+    # cannot start that access point, so leave the 6 GHz radios out instead
+    # of taking their hostapd down.  An empty key or a WPA2-EAP section
+    # without RADIUS settings also ends up open in configure_ap_iface, so
+    # treat those as open here as well.
+    ap_open=1
+    if [ "$ENCRYPTION_ENABLED" = 1 ]; then
+        if [ "$ENCRYPTION_TYPE" = 'wpa2' ] &&
+           [ -n "$EAP_SERVER" ] && [ -n "$EAP_SECRET" ]; then
+            ap_open=0
+        elif [ -n "$NETWORK_KEY" ]; then
+            ap_open=0
+        fi
+    fi
+    if [ "$ap_open" = 1 ]; then
+        needed=owe
+        needed_label=OWE
+    elif [ "$ENCRYPTION_TYPE" = 'wpa2' ]; then
+        needed=eap
+        needed_label=EAP
+    else
+        needed=sae
+        needed_label=SAE
+    fi
+    if ! hostapd_feature "$needed"; then
+        kept=""
+        dropped=""
+        for radio in $WIFI_RADIOS; do
+            if radio_is_6g "$radio"; then
+                dropped="$dropped $radio"
+            else
+                kept="$kept $radio"
+            fi
+        done
+        if [ -n "$dropped" ]; then
+            echo "The installed wpad build has no $needed_label support, so$dropped cannot serve an access point on 6 GHz and is skipped."
+            WIFI_RADIOS=${kept# }
+        fi
     fi
 
     for radio in $WIFI_RADIOS; do

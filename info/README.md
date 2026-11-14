@@ -78,7 +78,7 @@ cp /etc/config/network /etc/config/wireless /etc/config/dhcp \
 | 有线回程端口 | 可选。选择与另一台 Mesh 设备相连的 LAN 网桥端口；纯无线回程保持「无」。 |
 | Mesh 网络 SSID | Mesh 回程的标识，所有设备必须完全一致。实际 802.11s 的 `mesh_id` 会自动加上 `-mesh` 后缀，例如填写 `MyMesh` 时空中看到的是 `MyMesh-mesh`。 |
 | 密码保护 | 开启后普通 WiFi 和 Mesh 回程都需要密码或认证。 |
-| 加密类型 | 普通 WiFi 接入点的加密方式：`WPA2-PSK/WPA3-SAE Mixed Mode`（默认）、`WPA2-PSK/WPA3-SAE Compatibility Mode`、`WPA3-SAE`、`WPA2-PSK` 或 `WPA2-EAP (RADIUS)`。兼容模式与混合模式使用相同的 WPA2-PSK + WPA3-SAE 认证，但把 SAE 扩展（强制 PMF、SAE-EXT-KEY、GCMP-256）放进 RSNE Override 元素，老客户端更容易连接，Wi-Fi 7（EHT）射频会默认启用 GCMP-256，适合开启 MLO 的场景。Mesh 回程不受此项影响，始终使用 WPA3-SAE，因为 802.11s 只使用 SAE 认证；6 GHz 射频只能使用 WPA3，所选加密方式在 6 GHz 上会映射为对应的 WPA3 模式（PSK 类映射为 WPA3-SAE，WPA2-EAP 映射为 WPA3-EAP，无密码网络映射为 OWE；开启 MLO 时含 6 GHz 链路的整个接入点都使用映射后的值）。 |
+| 加密类型 | 普通 WiFi 接入点的加密方式：`WPA2-PSK/WPA3-SAE Mixed Mode`（默认）、`WPA2-PSK/WPA3-SAE Compatibility Mode`、`WPA3-SAE`、`WPA2-PSK` 或 `WPA2-EAP (RADIUS)`。兼容模式与混合模式使用相同的 WPA2-PSK + WPA3-SAE 认证，但把 SAE 扩展（强制 PMF、SAE-EXT-KEY、GCMP-256）放进 RSNE Override 元素，老客户端更容易连接，Wi-Fi 7（EHT）射频会默认启用 GCMP-256，适合开启 MLO 的场景。Mesh 回程不受此项影响，始终使用 WPA3-SAE，因为 802.11s 只使用 SAE 认证；6 GHz 射频只能使用 WPA3，所选加密方式在 6 GHz 上会映射为对应的 WPA3 模式（PSK 类映射为 WPA3-SAE，WPA2-EAP 映射为 WPA3-EAP，无密码网络映射为 OWE；开启 MLO 时含 6 GHz 链路的整个接入点都使用映射后的值）。插件会探测当前固件的 hostapd/wpad 能力：下拉菜单只列出可用的模式；手工写入不支持的值时，脚本会在应用时自动降级并在运行日志中说明（没有 SAE 时降为 WPA2-PSK，缺少 `sae-compat` 支持时降为混合模式，没有 EAP 时降为可用的 PSK 模式；无密码网络在缺少 OWE 支持的固件上会跳过 6 GHz 射频）。插件在 OpenWrt/ImmortalWrt 24.10（shell 网络脚本）和 25.x（ucode 网络脚本）上使用同一套探测逻辑。 |
 | Mesh 密码 | 至少 8 位。PSK 模式下同时用于普通 WiFi 和 Mesh 回程；WPA2-EAP 模式下普通 WiFi 由 RADIUS 认证，此密码仍用于保护 Mesh 回程。所有设备必须一致。 |
 | RADIUS 认证服务器 / 端口 / 密钥 | 仅在选择 `WPA2-EAP (RADIUS)` 时显示。填写认证服务器地址、端口（默认 `1812`）和共享密钥；缺少服务器或密钥时，脚本会回退到 `WPA2-PSK/WPA3-SAE Mixed Mode` 并在运行日志中提示，避免 AP 无法启动。服务器上的共享密钥必须与这里一致。 |
 

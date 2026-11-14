@@ -703,7 +703,12 @@ function loadView(opts) {
 
 	const L = {
 		bind(fn, self, ...args) { return fn.bind(self, ...args); },
-		hasSystemFeature() { return true; },
+		hasSystemFeature(pkg, feature) {
+			if (opts.hasSystemFeature)
+				return opts.hasSystemFeature(pkg, feature);
+
+			return true;
+		},
 		resource(path) { return '/luci-static/resources/' + path; }
 	};
 
@@ -3254,6 +3259,85 @@ async function run() {
 		await t.view.load();
 		lib.ok(!textOf(await t.view.render()).includes('This node has no DHCP lease'),
 			'an unreadable LAN status shows no lease warning');
+	}
+
+	/* The encryption choices follow the installed wpad build: a mode the
+	 * build cannot start is not offered, and the default becomes a mode it
+	 * can.  When the script reports neither SAE nor EAP, only WPA2-PSK is
+	 * left (sae_compat=1 is ignored without SAE, since it is an SAE mode). */
+	{
+		const t = loadView({
+			devices: DEVICES,
+			execReply: { code: 0, stdout: NEIGHBORS },
+			execReplies: {
+				'/etc/meshassistant/shell/meshassistant.sh capabilities': {
+					code: 0,
+					stdout: 'kvr=0\nwnm=1\ndawn=0\nsae=0\neap=0\nowe=0\nsae_compat=1\n'
+				}
+			}
+		});
+
+		await t.view.load();
+		await t.view.render();
+
+		const o = t.registry.options.encryption_type;
+
+		lib.eq(o.values, [['psk2', 'WPA2-PSK']],
+			'a build without SAE or EAP offers only WPA2-PSK');
+		lib.eq(o.default, 'psk2',
+			'the default follows the build and is WPA2-PSK');
+	}
+
+	/* Compatibility Mode needs both SAE and the stack support the script
+	 * reports separately; without the latter the mixed mode replaces it. */
+	{
+		const t = loadView({
+			devices: DEVICES,
+			execReply: { code: 0, stdout: NEIGHBORS },
+			execReplies: {
+				'/etc/meshassistant/shell/meshassistant.sh capabilities': {
+					code: 0,
+					stdout: 'kvr=0\nwnm=1\ndawn=0\nsae=1\neap=1\nowe=1\nsae_compat=0\n'
+				}
+			}
+		});
+
+		await t.view.load();
+		await t.view.render();
+
+		const o = t.registry.options.encryption_type;
+
+		lib.eq(o.values, [
+			['sae-mixed', 'WPA2-PSK/WPA3-SAE Mixed Mode'],
+			['sae', 'WPA3-SAE'],
+			['psk2', 'WPA2-PSK'],
+			['wpa2', 'WPA2-EAP (RADIUS)']
+		], 'a stack without sae-compat does not offer Compatibility Mode');
+		lib.eq(o.default, 'sae-mixed',
+			'a build with SAE still defaults to the mixed mode');
+	}
+
+	/* Without a usable capability reply the view falls back to LuCI's own
+	 * hostapd probe, and hides the same modes when it reports them missing. */
+	{
+		const t = loadView({
+			devices: DEVICES,
+			execReply: { code: 0, stdout: NEIGHBORS },
+			hasSystemFeature(pkg, feature) {
+				lib.eq(pkg, 'hostapd', 'the fallback asks hostapd for features');
+				return feature !== 'sae' && feature !== 'eap';
+			}
+		});
+
+		await t.view.load();
+		await t.view.render();
+
+		const o = t.registry.options.encryption_type;
+
+		lib.eq(o.values, [['psk2', 'WPA2-PSK']],
+			'the LuCI feature fallback hides unsupported modes too');
+		lib.eq(o.default, 'psk2',
+			'the LuCI feature fallback also picks the WPA2-PSK default');
 	}
 
 	lib.summary('view');

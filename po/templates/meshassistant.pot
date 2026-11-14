@@ -104,7 +104,7 @@ msgstr ""
 msgid "Encryption Type"
 msgstr ""
 
-msgid "Encryption used by the WiFi access points. The mesh backhaul always uses WPA3-SAE and is not affected by this setting. A 6 GHz radio allows WPA3 only, so the selected mode is mapped to its WPA3 equivalent there."
+msgid "Encryption used by the WiFi access points. The mesh backhaul always uses WPA3-SAE and is not affected by this setting. A 6 GHz radio supports WPA3 only, so the selected mode is mapped automatically to its WPA3 equivalent; modes the installed wpad build cannot provide are hidden."
 msgstr ""
 
 msgid "Ensure that the SSID is the same across all the servers/nodes in your mesh network."

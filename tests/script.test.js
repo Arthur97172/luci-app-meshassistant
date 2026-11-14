@@ -138,6 +138,11 @@ DAWN_MANAGED="$TEST_INITD_STATE/dawn_managed"
 DAWN_BACKUP="$TEST_INITD_STATE/dawn.backup"
 MESHASSISTANT_SYS_CLASS_NET="$TEST_INITD_STATE/sys-net"
 
+# The test host has no router hostapd/wpad, so pin the probed build features.
+# Individual cases override these to model a stripped-down wpad build.
+export MESHASSISTANT_HOSTAPD_FEATURES='sae eap owe'
+export MESHASSISTANT_SAE_COMPAT_OK=1
+
 ${src}
 
 reset_cfg() {
@@ -527,6 +532,112 @@ uci set meshassistant.config.encryption_type=wpa2
 setup_ap_radios >/dev/null 2>&1
 echo "type_eap_incomplete=$(get_or_unset wireless.wifi_ap_radio1.encryption)"
 echo "type_eap_incomplete_key=$(get_or_unset wireless.wifi_ap_radio1.key)"
+
+# A wpad build without SAE cannot start any SAE mode, so every one of them is
+# downgraded to WPA2-PSK and the run log warns that the mesh backhaul needs
+# SAE.  A build without EAP downgrades WPA2-EAP to the best PSK mode it has.
+reset_cfg
+uci set meshassistant.config.encryption=1
+uci set meshassistant.config.key='secret123'
+uci set meshassistant.config.encryption_type=sae-mixed
+caps_log="$TEST_INITD_STATE/caps.log"
+MESHASSISTANT_HOSTAPD_FEATURES='eap owe' setup_ap_radios >"$caps_log" 2>&1
+echo "type_no_sae=$(get_or_unset wireless.wifi_ap_radio1.encryption)"
+echo "type_no_sae_log=$(grep -c 'no SAE support' "$caps_log")"
+
+reset_cfg
+uci set meshassistant.config.encryption=1
+uci set meshassistant.config.key='secret123'
+uci set meshassistant.config.encryption_type=sae-compat
+MESHASSISTANT_HOSTAPD_FEATURES='eap owe' setup_ap_radios >/dev/null 2>&1
+echo "type_no_sae_compat=$(get_or_unset wireless.wifi_ap_radio1.encryption)"
+
+# Compatibility Mode additionally needs the wifi stack to translate
+# sae-compat; without that it falls back to the mixed mode.
+reset_cfg
+uci set meshassistant.config.encryption=1
+uci set meshassistant.config.key='secret123'
+uci set meshassistant.config.encryption_type=sae-compat
+caps_log="$TEST_INITD_STATE/caps.log"
+MESHASSISTANT_SAE_COMPAT_OK=0 setup_ap_radios >"$caps_log" 2>&1
+echo "type_no_compat=$(get_or_unset wireless.wifi_ap_radio1.encryption)"
+echo "type_no_compat_log=$(grep -c 'does not support Compatibility Mode' "$caps_log")"
+
+reset_cfg
+uci set meshassistant.config.encryption=1
+uci set meshassistant.config.key='secret123'
+uci set meshassistant.config.encryption_type=wpa2
+uci set meshassistant.config.auth_server=192.168.10.9
+uci set meshassistant.config.auth_secret=radiussecret
+MESHASSISTANT_HOSTAPD_FEATURES='sae owe' setup_ap_radios >/dev/null 2>&1
+echo "type_no_eap=$(get_or_unset wireless.wifi_ap_radio1.encryption)"
+echo "type_no_eap_key=$(get_or_unset wireless.wifi_ap_radio1.key)"
+
+reset_cfg
+uci set meshassistant.config.encryption=1
+uci set meshassistant.config.key='secret123'
+uci set meshassistant.config.encryption_type=wpa2
+uci set meshassistant.config.auth_server=192.168.10.9
+uci set meshassistant.config.auth_secret=radiussecret
+MESHASSISTANT_HOSTAPD_FEATURES='owe' setup_ap_radios >/dev/null 2>&1
+echo "type_no_eap_no_sae=$(get_or_unset wireless.wifi_ap_radio1.encryption)"
+
+# A 6 GHz radio is written as SAE (or WPA3-EAP) no matter which PSK mode was
+# chosen, so a build without SAE cannot serve it either; the radio is skipped
+# while the other radios keep the downgraded WPA2-PSK access point.
+reset_cfg
+uci set wireless.radio1.band=5g
+uci set wireless.radio2=wifi-device
+uci set wireless.radio2.band=6g
+uci set meshassistant.config.wifi_radio='radio1 radio2'
+uci set meshassistant.config.encryption=1
+uci set meshassistant.config.key='secret123'
+uci set meshassistant.config.encryption_type=sae-mixed
+caps_log="$TEST_INITD_STATE/caps.log"
+MESHASSISTANT_HOSTAPD_FEATURES='eap owe' setup_ap_radios >"$caps_log" 2>&1
+echo "no_sae_6g=$(get_or_unset wireless.wifi_ap_radio2)"
+echo "no_sae_5g=$(get_or_unset wireless.wifi_ap_radio1.encryption)"
+echo "no_sae_6g_log=$(grep -c 'cannot serve an access point on 6 GHz' "$caps_log")"
+
+# An open access point on 6 GHz is written as OWE, which a wpad build without
+# OWE cannot start.  Such a build drops the 6 GHz radio from the AP list
+# (keeping the others) and says so in the run log.
+reset_cfg
+uci set wireless.radio1.band=5g
+uci set wireless.radio2=wifi-device
+uci set wireless.radio2.band=6g
+uci set meshassistant.config.wifi_radio='radio1 radio2'
+uci set meshassistant.config.encryption=0
+caps_log="$TEST_INITD_STATE/caps.log"
+MESHASSISTANT_HOSTAPD_FEATURES='sae eap' setup_ap_radios >"$caps_log" 2>&1
+echo "owe_off_6g=$(get_or_unset wireless.wifi_ap_radio2)"
+echo "owe_off_5g=$(get_or_unset wireless.wifi_ap_radio1.encryption)"
+echo "owe_off_managed=$(get_or_unset meshassistant.config.ap_radios_managed)"
+echo "owe_off_log=$(grep -c 'no OWE support' "$caps_log")"
+
+# The same applies when password protection is on but the key is empty: the
+# AP ends up open.
+reset_cfg
+uci set wireless.radio2=wifi-device
+uci set wireless.radio2.band=6g
+uci set meshassistant.config.wifi_radio='radio2'
+uci set meshassistant.config.encryption=1
+uci -q del meshassistant.config.key
+MESHASSISTANT_HOSTAPD_FEATURES='sae eap' setup_ap_radios >/dev/null 2>&1
+echo "owe_empty_key_6g=$(get_or_unset wireless.wifi_ap_radio2)"
+
+# An MLD cannot be formed with the dropped 6 GHz link, so the remaining radio
+# gets an ordinary access point instead of a broken MLD.
+reset_cfg
+uci set wireless.radio1.band=5g
+uci set wireless.radio2=wifi-device
+uci set wireless.radio2.band=6g
+uci set meshassistant.config.wifi_radio='radio1 radio2'
+uci set meshassistant.config.mlo=1
+uci set meshassistant.config.encryption=0
+MESHASSISTANT_HOSTAPD_FEATURES='sae eap' setup_ap_radios >/dev/null 2>&1
+echo "owe_off_mlo=$(get_or_unset wireless.wifi_ap_mlo)"
+echo "owe_off_mlo_5g=$(get_or_unset wireless.wifi_ap_radio1.encryption)"
 
 # The mesh backhaul keeps SAE for every type: 802.11s only uses the SAE AKM,
 # independently of the client-facing encryption.
@@ -2223,6 +2334,42 @@ function run() {
 		'the mesh backhaul stays on SAE regardless of the AP encryption');
 	lib.eq(values.type_off, 'none',
 		'the encryption type is ignored while password protection is off');
+	lib.eq(values.type_no_sae, 'psk2',
+		'a wpad build without SAE downgrades an SAE mode to WPA2-PSK');
+	lib.eq(values.type_no_sae_log, '1',
+		'the SAE downgrade warns that the mesh backhaul needs SAE');
+	lib.eq(values.type_no_sae_compat, 'psk2',
+		'Compatibility Mode is downgraded too when SAE is missing');
+	lib.eq(values.type_no_compat, 'sae-mixed',
+		'a stack without sae-compat falls back to the mixed mode');
+	lib.eq(values.type_no_compat_log, '1',
+		'the Compatibility Mode downgrade is reported in the log');
+	lib.eq(values.type_no_eap, 'sae-mixed',
+		'a wpad build without EAP falls back to the mixed mode');
+	lib.eq(values.type_no_eap_key, 'secret123',
+		'the EAP downgrade still writes the shared passphrase');
+	lib.eq(values.type_no_eap_no_sae, 'psk2',
+		'a build with neither EAP nor SAE falls back to WPA2-PSK');
+	lib.eq(values.no_sae_6g, 'UNSET',
+		'a 6 GHz radio is skipped when the build has no SAE');
+	lib.eq(values.no_sae_5g, 'psk2',
+		'the remaining radio keeps the downgraded WPA2-PSK mode');
+	lib.eq(values.no_sae_6g_log, '1',
+		'the SAE-less 6 GHz radio is reported in the log');
+	lib.eq(values.owe_off_6g, 'UNSET',
+		'a 6 GHz radio is skipped for an open AP without OWE');
+	lib.eq(values.owe_off_5g, 'none',
+		'the remaining radio still serves the open access point');
+	lib.eq(values.owe_off_managed, 'radio1',
+		'the skipped 6 GHz radio is dropped from the managed list');
+	lib.eq(values.owe_off_log, '1',
+		'the skipped 6 GHz radio is reported in the log');
+	lib.eq(values.owe_empty_key_6g, 'UNSET',
+		'an empty key leaves the AP open and also skips 6 GHz without OWE');
+	lib.eq(values.owe_off_mlo, 'UNSET',
+		'no MLD is created when its 6 GHz link was skipped');
+	lib.eq(values.owe_off_mlo_5g, 'none',
+		'the remaining radio gets an ordinary AP instead of an MLD');
 
 	lib.eq(values.mlo_section, 'wifi-iface', 'MLO creates one MLD section');
 	lib.eq(values.mlo_device, 'radio0 radio1', 'the MLD section lists both radios');
@@ -2356,21 +2503,21 @@ function run() {
 	lib.ok((values.lock_second_msg || '').includes('already running'),
 		'the lock refusal says another operation is running', values.lock_second_msg);
 
-	lib.eq(values.caps_off_supported, 'kvr=0|wnm=1|dawn=1|dawn_running=0|',
+	lib.eq(values.caps_off_supported, 'kvr=0|wnm=1|dawn=1|dawn_running=0|sae=1|eap=1|owe=1|sae_compat=1|',
 		'the status hint reports a supported device with roaming off and DAWN stopped');
-	lib.eq(values.caps_on_unsupported, 'kvr=1|wnm=0|dawn=1|dawn_running=0|',
+	lib.eq(values.caps_on_unsupported, 'kvr=1|wnm=0|dawn=1|dawn_running=0|sae=1|eap=1|owe=1|sae_compat=1|',
 		'the status hint reports missing 802.11v while roaming is on');
-	lib.eq(values.caps_no_dawn, 'kvr=0|wnm=1|dawn=0|dawn_running=0|',
+	lib.eq(values.caps_no_dawn, 'kvr=0|wnm=1|dawn=0|dawn_running=0|sae=1|eap=1|owe=1|sae_compat=1|',
 		'the status hint reports a missing DAWN install');
-	lib.eq(values.caps_dawn_stopped, 'kvr=0|wnm=1|dawn=1|dawn_running=0|',
+	lib.eq(values.caps_dawn_stopped, 'kvr=0|wnm=1|dawn=1|dawn_running=0|sae=1|eap=1|owe=1|sae_compat=1|',
 		'an installed but stopped DAWN is reported as not running');
-	lib.eq(values.caps_dawn_running, 'kvr=0|wnm=1|dawn=1|dawn_running=1|',
+	lib.eq(values.caps_dawn_running, 'kvr=0|wnm=1|dawn=1|dawn_running=1|sae=1|eap=1|owe=1|sae_compat=1|',
 		'a running DAWN is reported as running');
 	lib.eq(values.caps_dawn_restarts,
-		'kvr=0|wnm=1|dawn=1|dawn_running=1|dawn_restarts=7|',
+		'kvr=0|wnm=1|dawn=1|dawn_running=1|sae=1|eap=1|owe=1|sae_compat=1|dawn_restarts=7|',
 		'a running DAWN reports its procd respawn count');
 	lib.eq(values.caps_dawn_restarts_unknown,
-		'kvr=0|wnm=1|dawn=1|dawn_running=1|',
+		'kvr=0|wnm=1|dawn=1|dawn_running=1|sae=1|eap=1|owe=1|sae_compat=1|',
 		'the respawn count is omitted when procd cannot report it');
 	lib.eq(values.caps_rc, '0',
 		'the probe succeeds even when the respawn count is unavailable');
