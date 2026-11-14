@@ -1248,7 +1248,27 @@ return view.extend({
 		o = s.taboption('setup', form.Flag, 'encryption', _('Password Protection'), _('Enable this switch to require a password to join your Mesh Network.'));
 		o.default = '0';
 
-		o = s.taboption('setup', form.Value, 'key', _('Mesh Password'));
+		/*
+		 * The security mode of the client-facing APs.  The mesh backhaul is
+		 * not affected: 802.11s only uses the SAE AKM, so it keeps using
+		 * WPA3-SAE with the same password.  Compatibility Mode is the
+		 * WPA2-PSK/WPA3-SAE transition mode that offers the SAE extensions
+		 * in the RSNE Override elements, which Wi-Fi 7 expects.  The script
+		 * maps every mode to its WPA3 equivalent on a 6 GHz radio instead of
+		 * relying on the wifi stack, which differs between OpenWrt 24.10
+		 * (shell) and 25.x (ucode).
+		 */
+		o = s.taboption('setup', form.ListValue, 'encryption_type', _('Encryption Type'), _('Encryption used by the WiFi access points. The mesh backhaul always uses WPA3-SAE and is not affected by this setting. A 6 GHz radio allows WPA3 only, so the selected mode is mapped to its WPA3 equivalent there.'));
+		o.value('sae-mixed', 'WPA2-PSK/WPA3-SAE Mixed Mode');
+		o.value('sae-compat', 'WPA2-PSK/WPA3-SAE Compatibility Mode');
+		o.value('sae', 'WPA3-SAE');
+		o.value('psk2', 'WPA2-PSK');
+		o.value('wpa2', 'WPA2-EAP (RADIUS)');
+		o.default = 'sae-mixed';
+		o.rmempty = false;
+		o.depends('encryption', '1');
+
+		o = s.taboption('setup', form.Value, 'key', _('Mesh Password'), _('Protects the WiFi network and the encrypted mesh backhaul. With WPA2-EAP it still protects the mesh backhaul.'));
 		o.default = 'meshassistant';
 		o.password = true;
 		o.datatype = 'minlength(8)';
@@ -1259,6 +1279,27 @@ return view.extend({
 		 * and configured the APs and the mesh without encryption.  Keep it.
 		 */
 		o.rmempty = false;
+
+		/*
+		 * WPA2-EAP authenticates clients against an external RADIUS server,
+		 * so the passphrase above only protects the mesh backhaul in that
+		 * mode.  All three values are written to every AP section.
+		 */
+		o = s.taboption('setup', form.Value, 'auth_server', _('RADIUS Authentication Server'), _('Address of the RADIUS server used for WPA2-EAP clients.'));
+		o.datatype = 'host(0)';
+		o.rmempty = false;
+		o.depends({ encryption: '1', encryption_type: 'wpa2' });
+
+		o = s.taboption('setup', form.Value, 'auth_port', _('RADIUS Authentication Port'));
+		o.datatype = 'port';
+		o.default = '1812';
+		o.placeholder = '1812';
+		o.depends({ encryption: '1', encryption_type: 'wpa2' });
+
+		o = s.taboption('setup', form.Value, 'auth_secret', _('RADIUS Authentication Secret'), _('Shared secret of the RADIUS server. It must match the value configured on the server.'));
+		o.password = true;
+		o.rmempty = false;
+		o.depends({ encryption: '1', encryption_type: 'wpa2' });
 
 		o = s.taboption('setup', form.Button, '_btn_reapply', _('Reapply meshassistant Settings'), _('Use this button to apply/reapply meshassistant configuration after you Save & Apply. The AP Mode address is applied here; if the address or the route is not applied correctly, the previous LAN settings are restored automatically.'));
 		const renderReapply = o.render;

@@ -348,8 +348,8 @@ echo "kept_ap=$(get_or_unset wireless.wifi_ap_radio1)"
 echo "user_ap=$(get_or_unset wireless.wifi_ap_radio2)"
 echo "stale_managed=$(get_or_unset meshassistant.config.ap_radios_managed)"
 
-# 4d. A 6 GHz radio selected for the regular AP gets the same settings; hostapd
-#     starts it as WPA3-only even with sae-mixed on this firmware.
+# 4d. An extra radio selected for the regular AP gets the same settings; a radio
+#     that is not 6 GHz keeps the selected mode unchanged.
 reset_cfg
 uci set meshassistant.config.wifi_radio='radio1 radio2'
 uci set meshassistant.config.encryption=1
@@ -362,6 +362,187 @@ echo "ap6g_encryption=$(get_or_unset wireless.wifi_ap_radio2.encryption)"
 echo "ap6g_key=$(get_or_unset wireless.wifi_ap_radio2.key)"
 echo "ap5g_encryption=$(get_or_unset wireless.wifi_ap_radio1.encryption)"
 echo "ap6g_managed=$(get_or_unset meshassistant.config.ap_radios_managed)"
+
+# 4d1. The encryption type chosen in the form selects the security mode of the
+#      regular APs: WPA2-PSK, WPA3-SAE, the WPA2/WPA3 mixed default, or
+#      WPA2-EAP backed by a RADIUS server.
+reset_cfg
+uci set meshassistant.config.encryption=1
+uci set meshassistant.config.key='secret123'
+uci set meshassistant.config.encryption_type=psk2
+setup_ap_radios >/dev/null 2>&1
+echo "type_psk2=$(get_or_unset wireless.wifi_ap_radio1.encryption)"
+echo "type_psk2_key=$(get_or_unset wireless.wifi_ap_radio1.key)"
+
+reset_cfg
+uci set meshassistant.config.encryption=1
+uci set meshassistant.config.key='secret123'
+uci set meshassistant.config.encryption_type=sae
+setup_ap_radios >/dev/null 2>&1
+echo "type_sae=$(get_or_unset wireless.wifi_ap_radio1.encryption)"
+
+reset_cfg
+uci set meshassistant.config.encryption=1
+uci set meshassistant.config.key='secret123'
+uci set meshassistant.config.encryption_type=sae-mixed
+setup_ap_radios >/dev/null 2>&1
+echo "type_mixed=$(get_or_unset wireless.wifi_ap_radio1.encryption)"
+
+# Compatibility Mode is its own UCI value and stays sae-compat on a radio
+# that is not 6 GHz.
+reset_cfg
+uci set meshassistant.config.encryption=1
+uci set meshassistant.config.key='secret123'
+uci set meshassistant.config.encryption_type=sae-compat
+setup_ap_radios >/dev/null 2>&1
+echo "type_compat=$(get_or_unset wireless.wifi_ap_radio1.encryption)"
+
+# 6 GHz allows WPA3 and OWE only.  The firmware upgrades sae-mixed, psk2 and
+# the other PSK modes there, but not sae-compat, so the script has to write
+# sae for the 6 GHz radio itself while the 5 GHz radio keeps the mode.
+reset_cfg
+uci set wireless.radio1.band=5g
+uci set wireless.radio2=wifi-device
+uci set wireless.radio2.band=6g
+uci set meshassistant.config.wifi_radio='radio1 radio2'
+uci set meshassistant.config.encryption=1
+uci set meshassistant.config.key='secret123'
+uci set meshassistant.config.encryption_type=sae-compat
+setup_ap_radios >/dev/null 2>&1
+echo "type_compat_5g=$(get_or_unset wireless.wifi_ap_radio1.encryption)"
+echo "type_compat_6g=$(get_or_unset wireless.wifi_ap_radio2.encryption)"
+echo "type_compat_6g_key=$(get_or_unset wireless.wifi_ap_radio2.key)"
+
+# Every PSK mode maps to SAE on 6 GHz, including the mixed mode: the wifi
+# stack of OpenWrt 25.x upgrades it by itself, but 24.10 does not, so the
+# script writes the mapped value instead of relying on the firmware.
+reset_cfg
+uci set wireless.radio2=wifi-device
+uci set wireless.radio2.band=6g
+uci set meshassistant.config.wifi_radio='radio2'
+uci set meshassistant.config.encryption=1
+uci set meshassistant.config.key='secret123'
+uci set meshassistant.config.encryption_type=sae-mixed
+setup_ap_radios >/dev/null 2>&1
+echo "type_mixed_6g=$(get_or_unset wireless.wifi_ap_radio2.encryption)"
+
+# WPA2-PSK and WPA2-EAP map to their WPA3 counterparts on 6 GHz.
+reset_cfg
+uci set wireless.radio2=wifi-device
+uci set wireless.radio2.band=6g
+uci set meshassistant.config.wifi_radio='radio2'
+uci set meshassistant.config.encryption=1
+uci set meshassistant.config.key='secret123'
+uci set meshassistant.config.encryption_type=psk2
+setup_ap_radios >/dev/null 2>&1
+echo "type_psk2_6g=$(get_or_unset wireless.wifi_ap_radio2.encryption)"
+
+reset_cfg
+uci set wireless.radio2=wifi-device
+uci set wireless.radio2.band=6g
+uci set meshassistant.config.wifi_radio='radio2'
+uci set meshassistant.config.encryption=1
+uci set meshassistant.config.key='secret123'
+uci set meshassistant.config.encryption_type=wpa2
+uci set meshassistant.config.auth_server=192.168.10.9
+uci set meshassistant.config.auth_secret=radiussecret
+setup_ap_radios >/dev/null 2>&1
+echo "type_eap_6g=$(get_or_unset wireless.wifi_ap_radio2.encryption)"
+echo "type_eap_6g_server=$(get_or_unset wireless.wifi_ap_radio2.auth_server)"
+
+# An open network is not allowed on 6 GHz either; OWE is its open equivalent.
+reset_cfg
+uci set wireless.radio2=wifi-device
+uci set wireless.radio2.band=6g
+uci set meshassistant.config.wifi_radio='radio2'
+uci set meshassistant.config.encryption=0
+setup_ap_radios >/dev/null 2>&1
+echo "type_open_6g=$(get_or_unset wireless.wifi_ap_radio2.encryption)"
+
+# An AP MLD carries one encryption value for every link, so a 6 GHz link
+# downgrades the whole access point to WPA3-SAE; without one it keeps the
+# Compatibility Mode.
+reset_cfg
+uci set wireless.radio1.band=5g
+uci set wireless.radio2=wifi-device
+uci set wireless.radio2.band=6g
+uci set meshassistant.config.wifi_radio='radio1 radio2'
+uci set meshassistant.config.mlo=1
+uci set meshassistant.config.encryption=1
+uci set meshassistant.config.key='secret123'
+uci set meshassistant.config.encryption_type=sae-compat
+setup_ap_radios >/dev/null 2>&1
+echo "type_compat_mlo=$(get_or_unset wireless.wifi_ap_mlo.encryption)"
+
+reset_cfg
+uci set wireless.radio0.band=2g
+uci set wireless.radio1.band=5g
+uci set meshassistant.config.wifi_radio='radio0 radio1'
+uci set meshassistant.config.mlo=1
+uci set meshassistant.config.encryption=1
+uci set meshassistant.config.key='secret123'
+uci set meshassistant.config.encryption_type=sae-compat
+setup_ap_radios >/dev/null 2>&1
+echo "type_compat_mlo_5g=$(get_or_unset wireless.wifi_ap_mlo.encryption)"
+
+# An unknown type falls back to the mixed mode rather than writing a value
+# hostapd would reject.
+reset_cfg
+uci set meshassistant.config.encryption=1
+uci set meshassistant.config.key='secret123'
+uci set meshassistant.config.encryption_type=bogus
+setup_ap_radios >/dev/null 2>&1
+echo "type_bogus=$(get_or_unset wireless.wifi_ap_radio1.encryption)"
+
+# WPA2-EAP writes the RADIUS settings and drops the unused PSK.
+reset_cfg
+uci set meshassistant.config.encryption=1
+uci set meshassistant.config.key='secret123'
+uci set meshassistant.config.encryption_type=wpa2
+uci set meshassistant.config.auth_server=192.168.10.9
+uci set meshassistant.config.auth_port=1812
+uci set meshassistant.config.auth_secret=radiussecret
+setup_ap_radios >/dev/null 2>&1
+echo "type_eap=$(get_or_unset wireless.wifi_ap_radio1.encryption)"
+echo "type_eap_server=$(get_or_unset wireless.wifi_ap_radio1.auth_server)"
+echo "type_eap_port=$(get_or_unset wireless.wifi_ap_radio1.auth_port)"
+echo "type_eap_secret=$(get_or_unset wireless.wifi_ap_radio1.auth_secret)"
+echo "type_eap_key=$(get_or_unset wireless.wifi_ap_radio1.key)"
+echo "type_eap_ft=$(get_or_unset wireless.wifi_ap_radio1.ieee80211r)"
+
+# Switching back to a PSK mode removes the stale RADIUS options.
+uci set meshassistant.config.encryption_type=psk2
+setup_ap_radios >/dev/null 2>&1
+echo "type_back_server=$(get_or_unset wireless.wifi_ap_radio1.auth_server)"
+echo "type_back_port=$(get_or_unset wireless.wifi_ap_radio1.auth_port)"
+echo "type_back_secret=$(get_or_unset wireless.wifi_ap_radio1.auth_secret)"
+echo "type_back_enc=$(get_or_unset wireless.wifi_ap_radio1.encryption)"
+
+# WPA2-EAP without a server or secret cannot start hostapd; use the mixed
+# mode instead of taking the whole access point down.
+reset_cfg
+uci set meshassistant.config.encryption=1
+uci set meshassistant.config.key='secret123'
+uci set meshassistant.config.encryption_type=wpa2
+setup_ap_radios >/dev/null 2>&1
+echo "type_eap_incomplete=$(get_or_unset wireless.wifi_ap_radio1.encryption)"
+echo "type_eap_incomplete_key=$(get_or_unset wireless.wifi_ap_radio1.key)"
+
+# The mesh backhaul keeps SAE for every type: 802.11s only uses the SAE AKM,
+# independently of the client-facing encryption.
+reset_cfg
+uci set meshassistant.config.encryption=1
+uci set meshassistant.config.key='secret123'
+uci set meshassistant.config.encryption_type=psk2
+setup_mesh_radio radio0 >/dev/null 2>&1
+echo "type_mesh_psk2=$(get_or_unset wireless.mesh_radio0.encryption)"
+
+# With password protection off the type is ignored and encryption stays none.
+reset_cfg
+uci set meshassistant.config.encryption=0
+uci set meshassistant.config.encryption_type=wpa2
+setup_ap_radios >/dev/null 2>&1
+echo "type_off=$(get_or_unset wireless.wifi_ap_radio1.encryption)"
 
 # 4e. With MLO enabled and two radios, one MLD section replaces the per-radio
 #     AP sections, and every link radio is switched to EHT.
@@ -1985,6 +2166,63 @@ function run() {
 		'5 GHz AP keeps the mixed encryption setting');
 	lib.eq(values.ap6g_managed, 'radio1 radio2',
 		'5 GHz and 6 GHz AP radios are recorded as managed');
+
+	lib.eq(values.type_psk2, 'psk2', 'WPA2-PSK selects psk2 for the AP');
+	lib.eq(values.type_psk2_key, 'secret123',
+		'WPA2-PSK still writes the shared passphrase');
+	lib.eq(values.type_sae, 'sae', 'WPA3-SAE selects sae for the AP');
+	lib.eq(values.type_mixed, 'sae-mixed',
+		'the mixed mode stays available as an explicit choice');
+	lib.eq(values.type_compat, 'sae-compat',
+		'Compatibility Mode is written for a non-6 GHz radio');
+	lib.eq(values.type_compat_5g, 'sae-compat',
+		'the 5 GHz radio keeps Compatibility Mode');
+	lib.eq(values.type_compat_6g, 'sae',
+		'the 6 GHz radio is downgraded to WPA3-SAE');
+	lib.eq(values.type_compat_6g_key, 'secret123',
+		'the downgraded 6 GHz radio still uses the passphrase');
+	lib.eq(values.type_mixed_6g, 'sae',
+		'the mixed mode is written as SAE on 6 GHz');
+	lib.eq(values.type_psk2_6g, 'sae',
+		'WPA2-PSK is written as SAE on 6 GHz');
+	lib.eq(values.type_eap_6g, 'wpa3',
+		'WPA2-EAP is written as WPA3-EAP on 6 GHz');
+	lib.eq(values.type_eap_6g_server, '192.168.10.9',
+		'the 6 GHz EAP access point keeps the RADIUS server');
+	lib.eq(values.type_open_6g, 'owe',
+		'an open 6 GHz access point is written as OWE');
+	lib.eq(values.type_compat_mlo, 'sae',
+		'an MLD with a 6 GHz link drops Compatibility Mode');
+	lib.eq(values.type_compat_mlo_5g, 'sae-compat',
+		'an MLD without a 6 GHz link keeps Compatibility Mode');
+	lib.eq(values.type_bogus, 'sae-mixed',
+		'an unknown encryption type falls back to the mixed mode');
+	lib.eq(values.type_eap, 'wpa2', 'WPA2-EAP selects wpa2 for the AP');
+	lib.eq(values.type_eap_server, '192.168.10.9',
+		'WPA2-EAP writes the RADIUS server');
+	lib.eq(values.type_eap_port, '1812', 'WPA2-EAP writes the RADIUS port');
+	lib.eq(values.type_eap_secret, 'radiussecret',
+		'WPA2-EAP writes the RADIUS secret');
+	lib.eq(values.type_eap_key, 'UNSET',
+		'WPA2-EAP drops the unused PSK from the AP section');
+	lib.eq(values.type_eap_ft, '1',
+		'WPA2-EAP keeps fast transition enabled');
+	lib.eq(values.type_back_server, 'UNSET',
+		'a stale RADIUS server is removed when leaving EAP mode');
+	lib.eq(values.type_back_port, 'UNSET',
+		'a stale RADIUS port is removed when leaving EAP mode');
+	lib.eq(values.type_back_secret, 'UNSET',
+		'a stale RADIUS secret is removed when leaving EAP mode');
+	lib.eq(values.type_back_enc, 'psk2',
+		'leaving EAP mode restores the selected PSK mode');
+	lib.eq(values.type_eap_incomplete, 'sae-mixed',
+		'WPA2-EAP without RADIUS settings falls back to the mixed mode');
+	lib.eq(values.type_eap_incomplete_key, 'secret123',
+		'the fallback still writes the shared passphrase');
+	lib.eq(values.type_mesh_psk2, 'sae',
+		'the mesh backhaul stays on SAE regardless of the AP encryption');
+	lib.eq(values.type_off, 'none',
+		'the encryption type is ignored while password protection is off');
 
 	lib.eq(values.mlo_section, 'wifi-iface', 'MLO creates one MLD section');
 	lib.eq(values.mlo_device, 'radio0 radio1', 'the MLD section lists both radios');

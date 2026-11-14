@@ -121,7 +121,7 @@ uci_commit() {
 
 # Heading for a run: command line, host, and the settings that drive it.
 log_run_header() {
-    local action="$1" hostname ip key_state role server_dhcp ssid_mode wired_backhaul
+    local action="$1" hostname ip key_state encryption_type role server_dhcp ssid_mode wired_backhaul
 
     log_trim
 
@@ -134,6 +134,9 @@ log_run_header() {
     else
         key_state='disabled'
     fi
+
+    encryption_type=$(uci -q get meshassistant.config.encryption_type)
+    [ -n "$encryption_type" ] || encryption_type='sae-mixed'
 
     # Show the effective value where the script applies a default.  role is
     # empty when the form default (Server) was saved, since LuCI omits it.
@@ -152,7 +155,7 @@ log_run_header() {
     log_note "Host: ${hostname:-unknown}${ip:+ ($ip)}"
     log_note "Settings: enabled=$(uci -q get meshassistant.config.enabled) role=$role server_dhcp=$server_dhcp"
     log_note "Settings: mesh_radio='$(uci -q get meshassistant.config.apRadio)' ap_radios='$(uci -q get meshassistant.config.wifi_radio)' mlo=$(uci -q get meshassistant.config.mlo) ssid_mode=$ssid_mode wired_backhaul=$wired_backhaul"
-    log_note "Wireless: wifi_id='$(uci -q get meshassistant.config.wifi_id)' mesh_id='$(uci -q get meshassistant.config.mesh_id)' encryption=$key_state key='***'"
+    log_note "Wireless: wifi_id='$(uci -q get meshassistant.config.wifi_id)' mesh_id='$(uci -q get meshassistant.config.mesh_id)' encryption=$key_state type=$encryption_type key='***'"
     log_note "============================================================"
 }
 
@@ -1514,11 +1517,40 @@ capabilities() {
     return 0
 }
 
+# 6 GHz allows WPA3 and OWE only.  The ucode wifi stack of OpenWrt 25.x maps
+# the PSK modes to WPA3 on a 6 GHz radio by itself, but the shell stack of
+# 24.10 does not (and neither maps sae-compat), so the plugin does it and the
+# result is the same on both.  An AP MLD carries one encryption value for
+# every link, so one 6 GHz link maps the whole access point.  $1 is the type,
+# the remaining arguments are the radios the section serves.
+ap_encryption_type() {
+    local type="$1" radio band
+
+    shift
+    for radio in "$@"; do
+        band=$(uci -q get wireless.$radio.band)
+        [ "$band" = '6g' ] || continue
+        case "$type" in
+            psk|psk2|psk-mixed|sae-mixed|sae-compat|psk3-mixed)
+                printf 'sae' ;;
+            wpa|wpa2|wpa-mixed|wpa3-mixed)
+                printf 'wpa3' ;;
+            none)
+                printf 'owe' ;;
+            *)
+                printf '%s' "$type" ;;
+        esac
+        return 0
+    done
+
+    printf '%s' "$type"
+}
+
 # Write the settings shared by every regular WiFi AP.  $1 is the UCI section
 # name, $2 the wireless device (or device list) it serves and $3 the optional
 # SSID for this section (defaults to the shared WIFI_ID).
 configure_ap_iface() {
-    local section="$1" device="$2" ssid="${3:-$WIFI_ID}"
+    local section="$1" device="$2" ssid="${3:-$WIFI_ID}" encryption
 
     uci set wireless.$section='wifi-iface'
     uci set wireless.$section.device="$device"
@@ -1558,12 +1590,39 @@ configure_ap_iface() {
         uci -q delete wireless.$section.bss_transition
     fi
 
-    # Apply encryption settings for regular WiFi
-    if [ "$ENCRYPTION_ENABLED" = 1 ] && [ -n "$NETWORK_KEY" ]; then
-        uci set wireless.$section.encryption='sae-mixed'
+    # Apply the encryption mode chosen in the form.  WPA2-EAP authenticates
+    # clients against an external RADIUS server and does not use the shared
+    # passphrase; the mesh backhaul still uses it (setup_mesh_radio writes
+    # 'sae' regardless, because 802.11s only uses the SAE AKM).
+    uci -q delete wireless.$section.auth_server
+    uci -q delete wireless.$section.auth_port
+    uci -q delete wireless.$section.auth_secret
+
+    if [ "$ENCRYPTION_ENABLED" = 1 ] &&
+       [ "${ENCRYPTION_TYPE:-sae-mixed}" = 'wpa2' ] &&
+       [ -n "$EAP_SERVER" ] && [ -n "$EAP_SECRET" ]; then
+        encryption=$(ap_encryption_type 'wpa2' $device)
+        [ "$encryption" = 'wpa3' ] && echo "6 GHz allows WPA3 only, so $section uses WPA3-EAP instead of WPA2-EAP."
+        uci set wireless.$section.encryption="$encryption"
+        uci set wireless.$section.auth_server="$EAP_SERVER"
+        uci set wireless.$section.auth_port="$EAP_PORT"
+        uci set wireless.$section.auth_secret="$EAP_SECRET"
+        uci -q delete wireless.$section.key
+    elif [ "$ENCRYPTION_ENABLED" = 1 ] && [ -n "$NETWORK_KEY" ]; then
+        # $device is a space-separated radio list for an AP MLD.
+        encryption=$(ap_encryption_type "${ENCRYPTION_TYPE:-sae-mixed}" $device)
+        if [ "$encryption" != "${ENCRYPTION_TYPE:-sae-mixed}" ]; then
+            echo "6 GHz allows WPA3 only, so $section uses $encryption instead of ${ENCRYPTION_TYPE:-sae-mixed}."
+        fi
+        uci set wireless.$section.encryption="$encryption"
         uci set wireless.$section.key="$NETWORK_KEY"
     else
-        uci set wireless.$section.encryption='none'
+        # An open 6 GHz BSS is not allowed either; OWE is its open equivalent.
+        encryption=$(ap_encryption_type 'none' $device)
+        if [ "$encryption" = 'owe' ]; then
+            echo "6 GHz does not allow an open network, so $section uses OWE."
+        fi
+        uci set wireless.$section.encryption="$encryption"
         [ -z "$NETWORK_KEY" ] && echo "Encryption key is empty, so encryption was disabled."
     fi
 }
@@ -1761,6 +1820,29 @@ setup_ap_radios() {
     MLO_ENABLED=$(uci -q get meshassistant.config.mlo)
     SSID_MODE=$(uci -q get meshassistant.config.ssid_mode)
     [ -z "$SSID_MODE" ] && SSID_MODE='same'
+
+    # The form offers these modes; the config can also be edited by hand, so
+    # anything else falls back to the mixed mode the plugin used before the
+    # choice existed.
+    ENCRYPTION_TYPE=$(uci -q get meshassistant.config.encryption_type)
+    case "$ENCRYPTION_TYPE" in
+        psk2|sae|sae-mixed|sae-compat|wpa2) ;;
+        *) ENCRYPTION_TYPE='sae-mixed' ;;
+    esac
+
+    EAP_SERVER=$(uci -q get meshassistant.config.auth_server)
+    EAP_PORT=$(uci -q get meshassistant.config.auth_port)
+    [ -n "$EAP_PORT" ] || EAP_PORT='1812'
+    EAP_SECRET=$(uci -q get meshassistant.config.auth_secret)
+
+    # hostapd refuses to start an AP whose WPA2-EAP configuration has no
+    # RADIUS server, which would take the whole radio down.  Keep the AP up in
+    # the mixed PSK mode instead and leave a note in the run log.
+    if [ "$ENCRYPTION_ENABLED" = 1 ] && [ "$ENCRYPTION_TYPE" = 'wpa2' ] &&
+       { [ -z "$EAP_SERVER" ] || [ -z "$EAP_SECRET" ]; }; then
+        echo "Warning: WPA2-EAP needs a RADIUS server and secret; using WPA2-PSK/WPA3-SAE mixed mode instead."
+        ENCRYPTION_TYPE='sae-mixed'
+    fi
 
     if [ -z "$WIFI_ID" ]; then
         echo "Regular WiFi SSID is empty. Using default."

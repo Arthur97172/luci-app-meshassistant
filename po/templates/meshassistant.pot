@@ -5,6 +5,9 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
+msgid "Address of the RADIUS server used for WPA2-EAP clients."
+msgstr ""
+
 msgid "Advanced Settings"
 msgstr ""
 
@@ -96,6 +99,12 @@ msgid "Enable MLO"
 msgstr ""
 
 msgid "Enable this switch to require a password to join your Mesh Network."
+msgstr ""
+
+msgid "Encryption Type"
+msgstr ""
+
+msgid "Encryption used by the WiFi access points. The mesh backhaul always uses WPA3-SAE and is not affected by this setting. A 6 GHz radio allows WPA3 only, so the selected mode is mapped to its WPA3 equivalent there."
 msgstr ""
 
 msgid "Ensure that the SSID is the same across all the servers/nodes in your mesh network."
@@ -245,6 +254,18 @@ msgstr ""
 msgid "Password Protection"
 msgstr ""
 
+msgid "Protects the WiFi network and the encrypted mesh backhaul. With WPA2-EAP it still protects the mesh backhaul."
+msgstr ""
+
+msgid "RADIUS Authentication Port"
+msgstr ""
+
+msgid "RADIUS Authentication Secret"
+msgstr ""
+
+msgid "RADIUS Authentication Server"
+msgstr ""
+
 msgid "PHY Mode"
 msgstr ""
 
@@ -285,6 +306,9 @@ msgid "Server"
 msgstr ""
 
 msgid "Server Provides DHCP"
+msgstr ""
+
+msgid "Shared secret of the RADIUS server. It must match the value configured on the server."
 msgstr ""
 
 msgid "Signal Strength"

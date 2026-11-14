@@ -7,6 +7,9 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
+msgid "Address of the RADIUS server used for WPA2-EAP clients."
+msgstr "WPA2-EAP 客户端使用的 RADIUS 服务器地址。"
+
 msgid "Advanced Settings"
 msgstr "高级设置"
 
@@ -99,6 +102,12 @@ msgstr "启用 MLO"
 
 msgid "Enable this switch to require a password to join your Mesh Network."
 msgstr "启用此开关后，加入 Mesh 网络需要密码。"
+
+msgid "Encryption Type"
+msgstr "加密类型"
+
+msgid "Encryption used by the WiFi access points. The mesh backhaul always uses WPA3-SAE and is not affected by this setting. A 6 GHz radio allows WPA3 only, so the selected mode is mapped to its WPA3 equivalent there."
+msgstr "普通 WiFi 接入点使用的加密方式。Mesh 回程始终使用 WPA3-SAE，不受此项影响。6 GHz 射频只能使用 WPA3，所选模式在 6 GHz 上会映射为对应的 WPA3 模式。"
 
 msgid "Ensure that the SSID is the same across all the servers/nodes in your mesh network."
 msgstr "确保 Mesh 网络中所有服务器/节点使用相同的 SSID。"
@@ -247,6 +256,18 @@ msgstr "活动节点数：%d"
 msgid "Password Protection"
 msgstr "密码保护"
 
+msgid "Protects the WiFi network and the encrypted mesh backhaul. With WPA2-EAP it still protects the mesh backhaul."
+msgstr "保护普通 WiFi 网络和加密的 Mesh 回程；选择 WPA2-EAP 时仍用于保护 Mesh 回程。"
+
+msgid "RADIUS Authentication Port"
+msgstr "RADIUS 认证端口"
+
+msgid "RADIUS Authentication Secret"
+msgstr "RADIUS 认证密钥"
+
+msgid "RADIUS Authentication Server"
+msgstr "RADIUS 认证服务器"
+
 msgid "PHY Mode"
 msgstr "PHY 模式"
 
@@ -288,6 +309,9 @@ msgstr "服务器"
 
 msgid "Server Provides DHCP"
 msgstr "服务器提供 DHCP"
+
+msgid "Shared secret of the RADIUS server. It must match the value configured on the server."
+msgstr "RADIUS 服务器的共享密钥，必须与服务器上的配置一致。"
 
 msgid "Signal Strength"
 msgstr "信号强度"

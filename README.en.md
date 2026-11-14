@@ -88,12 +88,19 @@ and `luci-i18n-meshassistant-zh-cn` are produced together.
 1. Open **Network → Mesh Assistant** and decide whether this device is the
    **Server** or a **Node**. There should be exactly one server per mesh.
 2. In **Basic Setup**, choose the role and fill in the WiFi Network SSID,
-   Regular AP Radio, Mesh Radio, Mesh Network SSID and password. The Regular AP
-   Radio field accepts up to two of 2.4 GHz, 5 GHz and 6 GHz; all selected
-   radios use the same WiFi Network SSID. With two radios selected, **Enable
-   MLO** combines them into a single Wi-Fi 7 multi-link access point (the
-   radios switch to EHT mode). Every device must use the same mesh radio,
-   mesh SSID and password. The server can also set **DHCP DNS Server** in
+   Regular AP Radio, Mesh Radio, Mesh Network SSID and password, then pick the
+   **Encryption Type** for the regular WiFi (WPA2-PSK/WPA3-SAE mixed by
+   default; WPA2-PSK/WPA3-SAE Compatibility Mode, WPA2-PSK, WPA3-SAE and
+   WPA2-EAP are also available). The mesh backhaul always uses WPA3-SAE and
+   is not affected by this choice. A 6 GHz radio allows WPA3 only, so the
+   selected mode is applied in its WPA3 form there (PSK modes become
+   WPA3-SAE, WPA2-EAP becomes WPA3-EAP, an open network becomes OWE). The
+   Regular AP Radio field accepts up to two
+   of 2.4 GHz, 5 GHz and 6 GHz; all selected radios use the same WiFi Network
+   SSID. With two radios selected, **Enable MLO** combines them into a single
+   Wi-Fi 7 multi-link access point (the radios switch to EHT mode). Every
+   device must use the same mesh radio, mesh SSID, encryption type and
+   password. The server can also set **DHCP DNS Server** in
    **Basic Setup** to choose the DNS server sent to clients as DHCP option 6;
    leaving it empty keeps advertising the server itself.
 3. For a Node or Client, open **AP Mode** and set the hostname and IP: use DHCP

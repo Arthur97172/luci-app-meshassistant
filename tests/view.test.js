@@ -944,6 +944,35 @@ async function run() {
 		lib.eq(o.key.rmempty, false,
 			'key is written even when it equals the default');
 
+		lib.eq(o.encryption_type.__kind, 'ListValue',
+			'encryption_type is a ListValue');
+		lib.eq(o.encryption_type.default, 'sae-mixed',
+			'encryption_type keeps the mixed mode by default');
+		lib.eq(o.encryption_type.values, [
+			['sae-mixed', 'WPA2-PSK/WPA3-SAE Mixed Mode'],
+			['sae-compat', 'WPA2-PSK/WPA3-SAE Compatibility Mode'],
+			['sae', 'WPA3-SAE'],
+			['psk2', 'WPA2-PSK'],
+			['wpa2', 'WPA2-EAP (RADIUS)']
+		], 'encryption_type offers the supported modes');
+		lib.eq(depsOf(o.encryption_type), [['encryption', '1']],
+			'encryption_type depends on password protection');
+		lib.eq(o.encryption_type.rmempty, false,
+			'encryption_type is written even when it equals the default');
+
+		for (const name of ['auth_server', 'auth_port', 'auth_secret'])
+			lib.eq(dependsGroups(o[name]), [[
+				['encryption', '1'],
+				['encryption_type', 'wpa2']
+			]], name + ' requires password protection and EAP mode');
+
+		lib.eq(o.auth_server.datatype, 'host(0)',
+			'auth_server accepts a host name or address');
+		lib.eq(o.auth_port.datatype, 'port', 'auth_port datatype');
+		lib.eq(o.auth_port.default, '1812', 'auth_port defaults to 1812');
+		lib.eq(o.auth_secret.password, true,
+			'auth_secret is a password field');
+
 		lib.eq(o.kvr.default, '0', 'kvr default');
 		lib.eq(o.ft.default, '1', 'ft default');
 		lib.eq(o.mobility_domain.default, '4f57', 'mobility_domain default');

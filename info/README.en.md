@@ -82,9 +82,12 @@ Menu entry: **Network → Mesh Assistant** (Chinese: **网络 → MESH助手**).
 | Mesh Radio | Radio that carries mesh backhaul, single-select. Every device must use the same radio. |
 | Wired Backhaul Port | Optional. Select the LAN bridge port cabled to another mesh device; keep **None** for wireless-only backhaul. |
 | Mesh Network SSID | Mesh backhaul identifier; must be identical on every device. The actual 802.11s `mesh_id` gets a `-mesh` suffix: entering `MyMesh` makes the over-the-air mesh ID `MyMesh-mesh`. |
-| Password Protection / Mesh Password | When enabled, the regular AP uses WPA3 mixed mode and the mesh backhaul uses WPA3; the password needs at least 8 characters. Every device must match. |
+| Password Protection | When enabled, the regular WiFi and the mesh backhaul both require a password or authentication. |
+| Encryption Type | Security mode of the regular WiFi access points: `WPA2-PSK/WPA3-SAE Mixed Mode` (default), `WPA2-PSK/WPA3-SAE Compatibility Mode`, `WPA3-SAE`, `WPA2-PSK` or `WPA2-EAP (RADIUS)`. Compatibility Mode uses the same WPA2-PSK + WPA3-SAE authentication as the mixed mode but offers the SAE extensions (mandatory PMF, SAE-EXT-KEY, GCMP-256) in the RSNE Override elements, so older clients associate more easily and a Wi-Fi 7 (EHT) radio enables GCMP-256 by default; it fits the MLO setup. The mesh backhaul is not affected and always uses WPA3-SAE, because 802.11s only uses the SAE AKM; a 6 GHz radio allows WPA3 only, so the selected mode is applied in its WPA3 form there (PSK modes become WPA3-SAE, WPA2-EAP becomes WPA3-EAP, an open network becomes OWE; with MLO the whole access point, 6 GHz link included, uses the mapped value). |
+| Mesh Password | At least 8 characters. In PSK modes it protects both the regular WiFi and the mesh backhaul; with WPA2-EAP the regular WiFi is authenticated by RADIUS and the password still protects the mesh backhaul. Every device must match. |
+| RADIUS Authentication Server / Port / Secret | Shown only for `WPA2-EAP (RADIUS)`. Enter the authentication server address, port (default `1812`) and shared secret; without a server or secret the script falls back to `WPA2-PSK/WPA3-SAE Mixed Mode` and says so in the run log instead of leaving an AP that cannot start. The secret must match the one configured on the server. |
 
-> Every device must use exactly the same **Mesh Radio**, **Mesh Network SSID**, **Password Protection** setting and **Mesh Password**. Otherwise no neighbour will appear.
+> Every device must use exactly the same **Mesh Radio**, **Mesh Network SSID**, **Password Protection** setting, **Encryption Type** (including the RADIUS settings with WPA2-EAP) and **Mesh Password**. Otherwise no neighbour will appear.
 
 ### 2.2 AP Mode (Node / Client only)
 
