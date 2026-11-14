@@ -2006,11 +2006,11 @@ async function run() {
 			[ '_spectrum_radio_radio0', 'spectrum_radio0_band', 'spectrum_radio0_mode',
 			  'spectrum_radio0_width', 'spectrum_radio0_channel',
 			  'spectrum_radio0_txpower', 'spectrum_radio0_country',
-			  'spectrum_radio0_plan', 'spectrum_radio0_hint' ],
+			  'spectrum_radio0_hint' ],
 			[ '_spectrum_radio_radio1', 'spectrum_radio1_band', 'spectrum_radio1_mode',
 			  'spectrum_radio1_width', 'spectrum_radio1_channel',
 			  'spectrum_radio1_txpower', 'spectrum_radio1_country',
-			  'spectrum_radio1_plan', 'spectrum_radio1_hint' ],
+			  'spectrum_radio1_hint' ],
 			[ '_spectrum_radio_radio2', 'spectrum_radio2_band', 'spectrum_radio2_mode',
 			  'spectrum_radio2_width', 'spectrum_radio2_channel',
 			  'spectrum_radio2_txpower', 'spectrum_radio2_country',
@@ -2019,28 +2019,26 @@ async function run() {
 		lib.eq(o._spectrum_radio_radio2.default,
 			'<h4 class="meshassistant-spectrum-radio">radio2 - 6 GHz</h4>',
 			'each radio has a heading with its band');
-		lib.eq(o.spectrum_radio0_hint.default,
+		lib.eq(o.spectrum_radio2_hint.default,
 			'<p class="meshassistant-note meshassistant-spectrum-hint">Make sure the “Server” and the “Node” or “Client” use the same settings.</p>',
-			'each radio page ends with the shared-settings hint');
+			'a radio without a channel plan gets only the shared-settings hint');
 		lib.eq(o.spectrum_radio0_hint.rawhtml, true, 'the hint is rendered as HTML');
 		lib.eq('spectrum_radio0_hint' in o && 'spectrum_radio1_hint' in o &&
 			'spectrum_radio2_hint' in o, true, 'every radio page gets the hint');
 
 		/*
 		 * With a single node every band gets the first channel of the
-		 * non-overlapping set, at the width the radio already uses. 6 GHz
-		 * has no plan, so its page keeps only the shared-settings hint.
+		 * non-overlapping set, at the width the radio already uses. The
+		 * recommendation shares the hint line instead of taking its own row.
 		 */
-		lib.eq(o.spectrum_radio0_plan.default,
-			'<p class="meshassistant-note meshassistant-spectrum-hint meshassistant-spectrum-plan">Suggested channel for this node: 1 (40 MHz).</p>',
-			'2.4 GHz gets a channel recommendation at its current width');
-		lib.eq(o.spectrum_radio1_plan.default,
-			'<p class="meshassistant-note meshassistant-spectrum-hint meshassistant-spectrum-plan">Suggested channel for this node: 36 (80 MHz).</p>',
-			'5 GHz gets a channel recommendation at its current width');
-		lib.eq('spectrum_radio2_plan' in o, false,
-			'6 GHz has no channel plan');
-		lib.eq(o.spectrum_radio0_plan.rawhtml, true,
-			'the channel recommendation is rendered as HTML');
+		lib.eq(o.spectrum_radio0_hint.default,
+			'<p class="meshassistant-note meshassistant-spectrum-hint">Suggested channel for this node: 1 (40 MHz). Make sure the “Server” and the “Node” or “Client” use the same settings.</p>',
+			'2.4 GHz merges the recommendation into the shared-settings hint');
+		lib.eq(o.spectrum_radio1_hint.default,
+			'<p class="meshassistant-note meshassistant-spectrum-hint">Suggested channel for this node: 36 (80 MHz). Make sure the “Server” and the “Node” or “Client” use the same settings.</p>',
+			'5 GHz merges the recommendation into the shared-settings hint');
+		lib.eq('spectrum_radio0_plan' in o || 'spectrum_radio1_plan' in o, false,
+			'the recommendation is not a separate form row');
 
 		lib.eq(o.spectrum_radio0_band.default, '2.4 GHz', 'radio0 band is read-only 2.4 GHz');
 		lib.eq(o.spectrum_radio1_band.default, '5 GHz', 'radio1 band is read-only 5 GHz');
@@ -2162,11 +2160,11 @@ async function run() {
 			[ '_spectrum_radio_radio0', 'spectrum_radio0_band', 'spectrum_radio0_mode',
 			  'spectrum_radio0_width', 'spectrum_radio0_channel',
 			  'spectrum_radio0_txpower', 'spectrum_radio0_country',
-			  'spectrum_radio0_plan', 'spectrum_radio0_hint' ],
+			  'spectrum_radio0_hint' ],
 			[ '_spectrum_radio_radio1', 'spectrum_radio1_band', 'spectrum_radio1_mode',
 			  'spectrum_radio1_width', 'spectrum_radio1_channel',
 			  'spectrum_radio1_txpower', 'spectrum_radio1_country',
-			  'spectrum_radio1_plan', 'spectrum_radio1_hint' ],
+			  'spectrum_radio1_hint' ],
 			[ '_spectrum_radio_radio2', 'spectrum_radio2_band', 'spectrum_radio2_mode',
 			  'spectrum_radio2_width', 'spectrum_radio2_channel',
 			  'spectrum_radio2_txpower', 'spectrum_radio2_country',

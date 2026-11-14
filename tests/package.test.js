@@ -68,7 +68,7 @@ lib.eq(acl.write.uci, [ 'meshassistant' ], 'write UCI grant');
 
 const mk = lib.read('Makefile');
 
-lib.ok(/^PKG_VERSION:=2\.7\.14$/m.test(mk), 'version is 2.7.14');
+lib.ok(/^PKG_VERSION:=2\.7\.15$/m.test(mk), 'version is 2.7.15');
 lib.ok(/^PKG_RELEASE:=1$/m.test(mk), 'release is 1');
 lib.ok(/^define Package\/luci-app-meshassistant\/postrm$/m.test(mk),
 	'uninstall hook is defined');
@@ -192,11 +192,6 @@ const view = lib.read(viewPath);
 const colorRe = /#[0-9a-fA-F]{3,8}\b|\brgba?\s*\(|\bhsla?\s*\(|(?:^|[;{\s])(?:color|background(?:-color)?)\s*:/m;
 
 lib.ok(!colorRe.test(view), 'view contains no hardcoded colors');
-
-const css = lib.read('htdocs/luci-static/resources/view/meshassistant/meshassistant.css');
-
-lib.ok(/\.meshassistant-spectrum-plan\s*\{[^}]*margin-bottom:\s*0(?:\s*;|\s*\})/.test(css),
-	'the channel recommendation closes the gap above the shared-settings hint');
 
 const workflow = lib.read('.github/workflows/build.yml');
 

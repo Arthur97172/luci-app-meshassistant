@@ -138,14 +138,24 @@ function rpcResults(value) {
 
 /*
  * Every radio page ends with the same reminder: the spectrum settings only
- * match up when the server and the node/client are configured alike.
+ * match up when the server and the node/client are configured alike.  When
+ * the channel plan has a suggestion for this radio, both messages share the
+ * one hint line instead of taking two stacked rows.
  */
-function addSpectrumHint(s, radio) {
+function addSpectrumHint(s, radio, recommendation) {
 	const hint = s.taboption('spectrum', form.DummyValue,
 		'spectrum_' + radio + '_hint', '', '');
 
+	let text = _('Make sure the “Server” and the “Node” or “Client” use the same settings.');
+
+	if (recommendation) {
+		text = _('Suggested channel for this node: %s (%s MHz).')
+			.format(recommendation.channel, recommendation.width)
+			+ ' ' + text;
+	}
+
 	hint.default = '<p class="meshassistant-note meshassistant-spectrum-hint">%s</p>'
-		.format(_('Make sure the “Server” and the “Node” or “Client” use the same settings.'));
+		.format(text);
 	hint.rawhtml = true;
 }
 
@@ -1475,21 +1485,7 @@ return view.extend({
 				return entry.band === band;
 			});
 
-			if (recommendation) {
-				const planOpt = s.taboption('spectrum', form.DummyValue,
-					'spectrum_' + radio + '_plan', '', '');
-
-				/*
-				 * Share the shared-settings hint class so the box aligns
-				 * with it and gets the same fit-content border.
-				 */
-				planOpt.default = '<p class="meshassistant-note meshassistant-spectrum-hint meshassistant-spectrum-plan">%s</p>'
-					.format(_('Suggested channel for this node: %s (%s MHz).')
-						.format(recommendation.channel, recommendation.width));
-				planOpt.rawhtml = true;
-			}
-
-			addSpectrumHint(s, radio);
+			addSpectrumHint(s, radio, recommendation);
 		}
 
 		o = s.taboption('advanced', form.Flag, 'kvr', _('Client Roaming (802.11k/v)'), _('Let DAWN steer clients to the strongest access point. Requires a full wpad build; wpad-basic lacks 802.11v, so roaming stays off.'));
