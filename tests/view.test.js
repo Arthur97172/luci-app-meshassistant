@@ -1847,6 +1847,52 @@ async function run() {
 
 	{
 		const t = loadView({
+			devices: DEVICES,
+			uciValues: {
+				wireless: {
+					radio0: { band: '2g' },
+					radio1: { band: '5g' }
+				}
+			},
+			execReply: { code: 0, stdout: '' }
+		});
+
+		await t.view.load();
+		await t.view.render();
+
+		const o = t.registry.options;
+
+		lib.eq([ '2g', '5g', '6g' ].map(function(band) {
+			return o['rssi_val_' + band] ? band : null;
+		}), [ '2g', '5g', null ],
+			'a dual-band device only offers the good thresholds of its own bands');
+		lib.eq([ '2g', '5g', '6g' ].map(function(band) {
+			return o['low_rssi_val_' + band] ? band : null;
+		}), [ '2g', '5g', null ],
+			'a dual-band device only offers the bad thresholds of its own bands');
+		lib.ok(o.rssi_val && o.low_rssi_val,
+			'the shared thresholds stay available without a 6 GHz radio');
+	}
+
+	{
+		const t = loadView({
+			devices: DEVICES,
+			execReply: { code: 0, stdout: '' }
+		});
+
+		await t.view.load();
+		await t.view.render();
+
+		const o = t.registry.options;
+
+		lib.eq([ '2g', '5g', '6g' ].map(function(band) {
+			return o['rssi_val_' + band] ? band : null;
+		}), [ '2g', '5g', '6g' ],
+			'radios without band data keep every threshold override editable');
+	}
+
+	{
+		const t = loadView({
 			devices: DEVICES.concat([
 				{ getName() { return 'radio2'; }, getI18n() { return 'Radio Two (radio2)'; } }
 			]),
@@ -1879,6 +1925,14 @@ async function run() {
 			'the 6 GHz SSID follows MLO and SSID mode like the other radios');
 		lib.eq(o.wifi_radio.validate(null, 'radio0,radio1,radio2'), true,
 			'all three radios can serve the regular AP');
+		lib.eq([ '2g', '5g', '6g' ].map(function(band) {
+			return o['rssi_val_' + band] ? band : null;
+		}), [ '2g', '5g', '6g' ],
+			'a tri-band device offers a good threshold for every band');
+		lib.eq([ '2g', '5g', '6g' ].map(function(band) {
+			return o['low_rssi_val_' + band] ? band : null;
+		}), [ '2g', '5g', '6g' ],
+			'a tri-band device offers a bad threshold for every band');
 	}
 
 	{

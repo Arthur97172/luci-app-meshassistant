@@ -105,7 +105,7 @@ These settings are not limited to Dumb AP mode: a normal node enable also applie
 
 ### 2.3 Advanced Settings
 
-**Client Roaming (802.11k/v)** is off by default. When enabled, the AP sections get 802.11k neighbor reports and 802.11v (BSS Transition), and the script writes `/etc/config/dawn` from the **Good / Bad RSSI** values on the page and enables DAWN, so a client whose signal drops is steered to a stronger AP.
+**Client Roaming (802.11k/v)** is off by default. When enabled, the AP sections get 802.11k neighbor reports and 802.11v (BSS Transition), and the script writes `/etc/config/dawn` from the **Good / Bad RSSI** values on the page and enables DAWN, so a client whose signal drops is steered to a stronger AP. The Good / Bad pair can be overridden per band below it; a band's override only appears when the device has a radio in that band, and an empty value falls back to the shared threshold.
 
 **Stay Connected on Weak Signal** is off by default. When enabled, a client stays on its current AP while every AP is below the Bad threshold: the script drops DAWN's absolute-RSSI kick, so steering only happens when a candidate AP is above that threshold. **Custom Signal Score Steps** changes the points DAWN adds or subtracts when a probe crosses a threshold (15 by default, 11–100); the step decides how much better a candidate must be to justify a move. With the option off the script still pins the 15/−15 defaults instead of relying on DAWN's compiled values.
 

@@ -85,6 +85,30 @@ function radioBand(radio) {
 	return uci.get('wireless', radio, 'band') || '';
 }
 
+/*
+ * The per-band thresholds mirror DAWN's metric sections, one per band.  Only
+ * the bands this device has a radio for are offered; a device whose radios
+ * report no band keeps all three, so the fields stay editable.
+ */
+function deviceBands(radios) {
+	const present = {};
+
+	for (const [ radio ] of radios || []) {
+		const band = radioBand(radio);
+
+		if (BAND_NAMES[band])
+			present[band] = true;
+	}
+
+	const known = Object.keys(BAND_NAMES).some(function(band) {
+		return present[band];
+	});
+
+	return Object.keys(BAND_NAMES).filter(function(band) {
+		return !known || present[band];
+	});
+}
+
 function parseHtmode(htmode) {
 	const match = /^(HT|VHT|HE|EHT)(20|40|80|160|320)$/.exec(htmode || '');
 
@@ -1609,9 +1633,10 @@ return view.extend({
 		/*
 		 * DAWN keeps a metric section per band.  An empty override makes
 		 * the band inherit the shared thresholds above, so the common case
-		 * stays one pair of numbers.
+		 * stays one pair of numbers.  A band without a radio is left out;
+		 * its section would have no BSS to score.
 		 */
-		for (const band of [ '2g', '5g', '6g' ]) {
+		for (const band of deviceBands(this.radios)) {
 			o = s.taboption('advanced', form.Value, 'rssi_val_' + band,
 				_('Good RSSI Threshold (%s)').format(BAND_NAMES[band]),
 				_('Leave empty to use the shared threshold above.'));
