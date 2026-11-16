@@ -1012,10 +1012,19 @@ async function run() {
 					field + '_' + band[0] + ' inherits the shared threshold');
 				lib.eq(opt.datatype, 'range(-120,-1)',
 					field + '_' + band[0] + ' accepts dBm values');
-				lib.eq(depsOf(opt), [['kvr', '1']],
-					field + '_' + band[0] + ' depends on client roaming');
+				lib.eq(dependsGroups(opt), [[
+					['kvr', '1'],
+					['custom_band_thresholds', '1']
+				]], field + '_' + band[0] + ' needs the per-band checkbox');
 			}
 		}
+
+		lib.eq(o.custom_band_thresholds.__kind, 'Flag',
+			'custom_band_thresholds is a Flag');
+		lib.eq(o.custom_band_thresholds.default, '0',
+			'the per-band thresholds start hidden');
+		lib.eq(depsOf(o.custom_band_thresholds), [['kvr', '1']],
+			'custom_band_thresholds depends on client roaming');
 
 		lib.eq(o.weak_stay.__kind, 'Flag', 'weak_stay is a Flag');
 		lib.eq(o.weak_stay.default, '0',
@@ -1872,6 +1881,28 @@ async function run() {
 			'a dual-band device only offers the bad thresholds of its own bands');
 		lib.ok(o.rssi_val && o.low_rssi_val,
 			'the shared thresholds stay available without a 6 GHz radio');
+		lib.eq(o.custom_band_thresholds.default, '0',
+			'an untouched dual-band device keeps the per-band fields hidden');
+	}
+
+	{
+		const t = loadView({
+			devices: DEVICES,
+			uciValues: {
+				meshassistant: { config: { low_rssi_val_2g: '-84' } },
+				wireless: {
+					radio0: { band: '2g' },
+					radio1: { band: '5g' }
+				}
+			},
+			execReply: { code: 0, stdout: '' }
+		});
+
+		await t.view.load();
+		await t.view.render();
+
+		lib.eq(t.registry.options.custom_band_thresholds.default, '1',
+			'a saved band override keeps the per-band fields visible');
 	}
 
 	{

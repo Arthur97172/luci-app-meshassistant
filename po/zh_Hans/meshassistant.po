@@ -555,3 +555,9 @@ msgstr "弱信号时保持连接"
 
 msgid "When every access point reports a signal below the Bad RSSI Threshold, keep the client on its current access point instead of asking it to move to another AP with an equally poor signal."
 msgstr "当所有接入点报告的信号都低于较差 RSSI 阈值时，让客户端留在当前接入点，而不是请求它切换到信号同样差的另一个 AP。"
+
+msgid "Custom Per-Band Thresholds"
+msgstr "按频段自定义阈值"
+
+msgid "Show a Good and Bad threshold for every band. When unchecked, all bands use the shared thresholds above."
+msgstr "勾选后可为每个频段单独设置良好和较差阈值；不勾选时所有频段使用上面的共享阈值。"

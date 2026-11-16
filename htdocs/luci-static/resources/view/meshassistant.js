@@ -1631,6 +1631,23 @@ return view.extend({
 		o.depends('kvr', '1');
 
 		/*
+		 * The per-band overrides would double the size of the roaming
+		 * section on a tri-band device, so they stay behind a checkbox.
+		 * A band tuned before the upgrade keeps them visible; a fresh
+		 * configuration starts compact.  Unchecking the box removes the
+		 * overrides on save (LuCI deletes the stored value of a hidden
+		 * option), which is the intended reset to the shared thresholds.
+		 */
+		const bandOverrides = Object.keys(BAND_NAMES).some(function(band) {
+			return uci.get('meshassistant', 'config', 'rssi_val_' + band) != null ||
+				uci.get('meshassistant', 'config', 'low_rssi_val_' + band) != null;
+		});
+
+		o = s.taboption('advanced', form.Flag, 'custom_band_thresholds', _('Custom Per-Band Thresholds'), _('Show a Good and Bad threshold for every band. When unchecked, all bands use the shared thresholds above.'));
+		o.default = bandOverrides ? '1' : '0';
+		o.depends('kvr', '1');
+
+		/*
 		 * DAWN keeps a metric section per band.  An empty override makes
 		 * the band inherit the shared thresholds above, so the common case
 		 * stays one pair of numbers.  A band without a radio is left out;
@@ -1642,14 +1659,14 @@ return view.extend({
 				_('Leave empty to use the shared threshold above.'));
 			o.default = '';
 			o.datatype = 'range(-120,-1)';
-			o.depends('kvr', '1');
+			o.depends({ kvr: '1', custom_band_thresholds: '1' });
 
 			o = s.taboption('advanced', form.Value, 'low_rssi_val_' + band,
 				_('Bad RSSI Threshold (%s)').format(BAND_NAMES[band]),
 				_('Leave empty to use the shared threshold above.'));
 			o.default = '';
 			o.datatype = 'range(-120,-1)';
-			o.depends('kvr', '1');
+			o.depends({ kvr: '1', custom_band_thresholds: '1' });
 		}
 
 		o = s.taboption('advanced', form.Flag, 'weak_stay', _('Stay Connected on Weak Signal'), _('When every access point reports a signal below the Bad RSSI Threshold, keep the client on its current access point instead of asking it to move to another AP with an equally poor signal.'));

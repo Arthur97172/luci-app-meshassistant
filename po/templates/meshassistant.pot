@@ -553,3 +553,9 @@ msgstr ""
 
 msgid "When every access point reports a signal below the Bad RSSI Threshold, keep the client on its current access point instead of asking it to move to another AP with an equally poor signal."
 msgstr ""
+
+msgid "Custom Per-Band Thresholds"
+msgstr ""
+
+msgid "Show a Good and Bad threshold for every band. When unchecked, all bands use the shared thresholds above."
+msgstr ""
