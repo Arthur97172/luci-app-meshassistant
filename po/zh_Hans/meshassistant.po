@@ -184,8 +184,8 @@ msgstr "保持当前值（%s）"
 msgid "Keep this enabled when the Mesh server is the only gateway and should provide DHCP and IPv6 RA for the LAN. Disable it when another router on the LAN already provides DHCP: the server then keeps the gateway and DNS role but stops its own DHCP/RA server."
 msgstr "当 Mesh 服务器是唯一网关并为 LAN 提供 DHCP 和 IPv6 RA 时，请保持启用。若 LAN 上已有其他路由器提供 DHCP，请关闭此项：服务器仍保留网关和 DNS 角色，但会停止自身的 DHCP/RA 服务。"
 
-msgid "Below this signal level DAWN treats the connection as poor and asks the client to move to a better access point."
-msgstr "低于该信号电平时，DAWN 会把连接视为较差，并请求客户端切换到更好的接入点。"
+msgid "Below this signal level DAWN treats the connection as poor and may ask the client to move to another access point."
+msgstr "低于该信号电平时，DAWN 会把连接视为较差，并可能请求客户端切换到其他接入点。"
 
 msgid "Link Rate"
 msgstr "链路速率"
@@ -537,3 +537,21 @@ msgstr "通过 DHCP 选项 6 下发给客户端的 DNS 服务器。留空则仍�
 
 msgid "This node has no DHCP lease on its LAN interface. Check the uplink cable or the DHCP service on the server."
 msgstr "本节点的 LAN 接口未获得 DHCP 租约。请检查上联网线或服务器上的 DHCP 服务。"
+
+msgid "Custom Signal Score Steps"
+msgstr "自定义信号评分台阶"
+
+msgid "DAWN scores a signal above the Good RSSI Threshold 15 points and one below the Bad threshold minus 15 points. Enable this to change that step."
+msgstr "DAWN 会给高于良好 RSSI 阈值的信号加 15 分，给低于较差阈值的信号扣 15 分。启用后可调整这一台阶分值。"
+
+msgid "Points added above the Good threshold and subtracted below the Bad one. A step at or below the roaming score margin has no effect, so choose 11-100."
+msgstr "高于良好阈值时增加的分数，低于较差阈值时扣减同样多的分数。台阶分值不大于漫游分数门槛时不起作用，请选择 11–100。"
+
+msgid "Signal Score Step"
+msgstr "信号评分台阶分值"
+
+msgid "Stay Connected on Weak Signal"
+msgstr "弱信号时保持连接"
+
+msgid "When every access point reports a signal below the Bad RSSI Threshold, keep the client on its current access point instead of asking it to move to another AP with an equally poor signal."
+msgstr "当所有接入点报告的信号都低于较差 RSSI 阈值时，让客户端留在当前接入点，而不是请求它切换到信号同样差的另一个 AP。"

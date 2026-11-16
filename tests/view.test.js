@@ -1017,6 +1017,27 @@ async function run() {
 			}
 		}
 
+		lib.eq(o.weak_stay.__kind, 'Flag', 'weak_stay is a Flag');
+		lib.eq(o.weak_stay.default, '0',
+			'weak_stay keeps the current behaviour by default');
+		lib.eq(depsOf(o.weak_stay), [['kvr', '1']],
+			'weak_stay depends on client roaming');
+		lib.eq(o.custom_signal_steps.__kind, 'Flag',
+			'custom_signal_steps is a Flag');
+		lib.eq(o.custom_signal_steps.default, '0',
+			'the signal score steps are static by default');
+		lib.eq(depsOf(o.custom_signal_steps), [['kvr', '1']],
+			'custom_signal_steps depends on client roaming');
+		lib.eq(o.rssi_step.default, '15', 'the signal score step defaults to 15');
+		lib.eq(o.rssi_step.datatype, 'range(11,100)',
+			'the signal step stays above the weak-signal score margin');
+		lib.eq(o.rssi_step.rmempty, false,
+			'the signal step is written even when it equals the default');
+		lib.eq(dependsGroups(o.rssi_step), [[
+			['kvr', '1'],
+			['custom_signal_steps', '1']
+		]], 'the signal step needs roaming and its checkbox together');
+
 		lib.eq(o.hostname.default, 'node2', 'hostname default');
 		lib.eq(o.hostname.values.map(v => v[0]),
 			['node2', 'node3', 'node4', 'node5', 'node6', 'node7', 'node8', 'node9'],

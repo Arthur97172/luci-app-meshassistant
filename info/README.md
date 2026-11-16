@@ -102,6 +102,8 @@ cp /etc/config/network /etc/config/wireless /etc/config/dhcp \
 
 「客户端漫游（802.11k/v）」默认关闭。开启后，AP 会写入 802.11k 邻居报告与 802.11v（BSS Transition），脚本按界面上的「良好 / 较差 RSSI 阈值」生成 `/etc/config/dawn` 并启用 DAWN，信号变差的客户端会被引导到更强的 AP。
 
+「弱信号时保持连接」默认关闭。开启后，当所有 AP 的信号都低于较差阈值时客户端留在当前 AP：脚本关闭 DAWN 的绝对 RSSI 踢除，只有存在越过较差阈值的候选 AP 时才会引导。「自定义信号评分台阶」用于调整信号越过阈值时的加/扣分值（默认 15，范围 11–100），分值决定候选 AP 要比当前 AP 好多少才值得切换；关闭该选项时脚本仍固定写入默认的 15/−15，不依赖 DAWN 自身的默认值。
+
 客户端漫游需要完整版 wpad（`wpad-mbedtls`、`wpad-openssl`、`wpad-wolfssl` 或 `wpad-mesh-*`）。默认的 `wpad-basic-*` 没有编译 802.11v（`CONFIG_WNM_AP`）：此时脚本会保持 DAWN 关闭并在运行日志中告警。不要手动设置 `bss_transition=1`，hostapd 会因未知配置项而无法启动。
 
 「Mesh 状态」标签页会检测当前 wpad 与 DAWN 的能力：设备支持 802.11k/v 而漫游尚未开启时，显示可以开启的提示；漫游已开启但 wpad 缺少 802.11v，或 DAWN 未安装时，显示告警说明客户端不会被引导。即使不开启漫游，802.11r 快速切换仍然生效，客户端也会自行切换 AP。

@@ -107,6 +107,8 @@ These settings are not limited to Dumb AP mode: a normal node enable also applie
 
 **Client Roaming (802.11k/v)** is off by default. When enabled, the AP sections get 802.11k neighbor reports and 802.11v (BSS Transition), and the script writes `/etc/config/dawn` from the **Good / Bad RSSI** values on the page and enables DAWN, so a client whose signal drops is steered to a stronger AP.
 
+**Stay Connected on Weak Signal** is off by default. When enabled, a client stays on its current AP while every AP is below the Bad threshold: the script drops DAWN's absolute-RSSI kick, so steering only happens when a candidate AP is above that threshold. **Custom Signal Score Steps** changes the points DAWN adds or subtracts when a probe crosses a threshold (15 by default, 11–100); the step decides how much better a candidate must be to justify a move. With the option off the script still pins the 15/−15 defaults instead of relying on DAWN's compiled values.
+
 Client roaming needs a full wpad build (`wpad-mbedtls`, `wpad-openssl`, `wpad-wolfssl` or a `wpad-mesh-*` variant). The usual `wpad-basic-*` build has no 802.11v (`CONFIG_WNM_AP`): the script then leaves DAWN stopped and logs a warning. Do not set `bss_transition=1` by hand; hostapd refuses to start on an option it was not compiled with.
 
 The **Mesh Status** tab checks the installed wpad build and DAWN: when the device supports 802.11k/v and roaming is still off, it shows a hint that the feature can be enabled; when roaming is on but wpad lacks 802.11v or DAWN is missing, it shows a warning that clients will not be steered. With roaming off, 802.11r fast transition still applies and clients still roam on their own.

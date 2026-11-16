@@ -1601,7 +1601,7 @@ return view.extend({
 		o.datatype = 'range(-120,-1)';
 		o.depends('kvr', '1');
 
-		o = s.taboption('advanced', form.Value, 'low_rssi_val', _('Bad RSSI Threshold'), _('Below this signal level DAWN treats the connection as poor and asks the client to move to a better access point.'));
+		o = s.taboption('advanced', form.Value, 'low_rssi_val', _('Bad RSSI Threshold'), _('Below this signal level DAWN treats the connection as poor and may ask the client to move to another access point.'));
 		o.default = '-88';
 		o.datatype = 'range(-120,-1)';
 		o.depends('kvr', '1');
@@ -1626,6 +1626,20 @@ return view.extend({
 			o.datatype = 'range(-120,-1)';
 			o.depends('kvr', '1');
 		}
+
+		o = s.taboption('advanced', form.Flag, 'weak_stay', _('Stay Connected on Weak Signal'), _('When every access point reports a signal below the Bad RSSI Threshold, keep the client on its current access point instead of asking it to move to another AP with an equally poor signal.'));
+		o.default = '0';
+		o.depends('kvr', '1');
+
+		o = s.taboption('advanced', form.Flag, 'custom_signal_steps', _('Custom Signal Score Steps'), _('DAWN scores a signal above the Good RSSI Threshold 15 points and one below the Bad threshold minus 15 points. Enable this to change that step.'));
+		o.default = '0';
+		o.depends('kvr', '1');
+
+		o = s.taboption('advanced', form.Value, 'rssi_step', _('Signal Score Step'), _('Points added above the Good threshold and subtracted below the Bad one. A step at or below the roaming score margin has no effect, so choose 11-100.'));
+		o.default = '15';
+		o.datatype = 'range(11,100)';
+		o.rmempty = false;
+		o.depends({ kvr: '1', custom_signal_steps: '1' });
 
 		o = s.taboption('apmode', form.Value, 'hostname', _('Node Hostname'));
 		o.default = 'node2';

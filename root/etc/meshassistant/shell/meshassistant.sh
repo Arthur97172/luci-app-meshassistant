@@ -2191,7 +2191,7 @@ dawn_release() {
 # in effect.  This function makes the running service match the form.  The
 # first pre-existing configuration is kept aside for dawn_release().
 setup_dawn() {
-    local kvr rssi low secret shared band suffix good bad
+    local kvr rssi low secret shared band suffix good bad stay mask threshold step
 
     kvr=$(uci -q get meshassistant.config.kvr)
     [ -n "$kvr" ] || kvr=0
@@ -2240,17 +2240,46 @@ setup_dawn() {
     [ -n "$secret" ] || secret=$(uci -q get meshassistant.config.mesh_id)
     shared=$(printf 'meshassistant:%s' "$secret" | md5sum | cut -c1-32)
 
-    # kicking=3 evaluates both the RSSI score and the absolute RSSI;
-    # kicking_threshold and min_number_to_kick keep one stray sample from
-    # moving a client.  set_hostapd_nr=1 publishes every AP in the mesh as a
-    # neighbor report.  The absolute check compares against rssi_center, so
-    # the form's Bad RSSI value is written there as well, not only to
-    # low_rssi_val which scores the connection.  duration is the 802.11k
-    # measurement time and the BTM disassociation/validity window in
-    # milliseconds; the stock file ships zero, which leaves the request
-    # without a validity window, so write the daemon's own default.
-    uci set dawn.global.kicking='3'
-    uci set dawn.global.kicking_threshold='20'
+    # kicking is a bitmask: bit 1 compares the scores of the current and the
+    # candidate AP, bit 2 pushes a client away whenever its current AP is
+    # below rssi_center, without looking at the candidates.  That second bit
+    # keeps moving a client even when every AP reports a bad signal, so the
+    # weak-signal-stay option drops it and lowers the score margin from 20
+    # to 10, which lets a candidate that merely crosses the Bad threshold
+    # (worth 15 points, see below) qualify.  kicking_threshold and
+    # min_number_to_kick keep one stray sample from moving a client.
+    # set_hostapd_nr=1 publishes every AP in the mesh as a neighbor report.
+    # The absolute check compares against rssi_center, so the form's Bad RSSI
+    # value is written there as well, not only to low_rssi_val which scores
+    # the connection.  duration is the 802.11k measurement time and the BTM
+    # disassociation/validity window in milliseconds; the stock file ships
+    # zero, which leaves the request without a validity window, so write the
+    # daemon's own default.
+    stay=$(uci -q get meshassistant.config.weak_stay)
+    if [ "$stay" = 1 ]; then
+        mask=1
+        threshold=10
+    else
+        mask=3
+        threshold=20
+    fi
+    # rssi and low_rssi are the points a probe gains above the Good threshold
+    # and loses below the Bad one.  They decide how much better a candidate
+    # must score before DAWN moves a client, so pin them instead of trusting
+    # the daemon's compiled defaults.  The form stores one positive step;
+    # below 11 the step can no longer clear the weak-signal margin above, and
+    # values over 100 would dwarf every other score component.  A pattern
+    # match keeps hand-edited values (leading zeros included) from reaching
+    # the shell's octal arithmetic.
+    step=$(uci -q get meshassistant.config.rssi_step)
+    [ "$(uci -q get meshassistant.config.custom_signal_steps)" = 1 ] || step=15
+    case "$step" in
+        1[1-9]|[2-9][0-9]|100) ;;
+        *) step=15 ;;
+    esac
+
+    uci set dawn.global.kicking="$mask"
+    uci set dawn.global.kicking_threshold="$threshold"
     uci set dawn.global.min_number_to_kick='3'
     uci set dawn.global.set_hostapd_nr='1'
     uci set dawn.global.duration='150'
@@ -2270,6 +2299,8 @@ setup_dawn() {
         uci set dawn.$band.rssi_val="$good"
         uci set dawn.$band.low_rssi_val="$bad"
         uci set dawn.$band.rssi_center="$bad"
+        uci set dawn.$band.rssi="$step"
+        uci set dawn.$band.low_rssi="-$step"
     done
     uci set dawn.@network[0].shared_key="$shared"
 
@@ -2279,7 +2310,11 @@ setup_dawn() {
     log_note "Running: /etc/init.d/dawn enable; /etc/init.d/dawn restart"
     /etc/init.d/dawn enable >/dev/null 2>&1
     /etc/init.d/dawn restart >/dev/null 2>&1
-    echo "Client roaming enabled (802.11k/v via DAWN: good $rssi dBm, bad $low dBm)."
+    if [ "$stay" = 1 ]; then
+        echo "Client roaming enabled (802.11k/v via DAWN: good $rssi dBm, bad $low dBm; clients stay put while every AP is below the bad threshold)."
+    else
+        echo "Client roaming enabled (802.11k/v via DAWN: good $rssi dBm, bad $low dBm)."
+    fi
 }
 
 # Apply the complete network and wireless configuration.

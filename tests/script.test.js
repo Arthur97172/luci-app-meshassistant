@@ -840,6 +840,8 @@ echo "dawn_good_a=$(get_or_unset dawn.802_11a.rssi_val)"
 echo "dawn_bad=$(get_or_unset dawn.802_11g.low_rssi_val)"
 echo "dawn_center=$(get_or_unset dawn.802_11g.rssi_center)"
 echo "dawn_center_a=$(get_or_unset dawn.802_11a.rssi_center)"
+echo "dawn_step=$(get_or_unset dawn.802_11g.rssi)"
+echo "dawn_low_step=$(get_or_unset dawn.802_11g.low_rssi)"
 echo "dawn_shared=$(get_or_unset 'dawn.@network[0].shared_key')"
 echo "dawn_net_named=$(get_or_unset dawn.network)"
 echo "dawn_managed=$([ -f "$DAWN_MANAGED" ] && echo yes || echo no)"
@@ -878,6 +880,57 @@ uci delete meshassistant.config.rssi_val_6g
 setup_dawn >/dev/null 2>&1
 echo "band_a_inherit=$(get_or_unset dawn.802_11a.rssi_val)"
 echo "band_ax_inherit=$(get_or_unset dawn.802_11ax.low_rssi_val)"
+
+# 4h3b. Weak-signal stay keeps DAWN from moving a client whose current AP is
+#       already below the bad threshold: the absolute-RSSI kick is dropped
+#       and the score margin shrinks to 10 so a candidate that merely crosses
+#       the bad threshold (worth 15 points) can still win.
+uci set meshassistant.config.weak_stay=1
+setup_dawn >/dev/null 2>&1
+echo "weak_kicking=$(get_or_unset dawn.global.kicking)"
+echo "weak_threshold=$(get_or_unset dawn.global.kicking_threshold)"
+uci delete meshassistant.config.weak_stay
+setup_dawn >/dev/null 2>&1
+echo "weak_off_kicking=$(get_or_unset dawn.global.kicking)"
+echo "weak_off_threshold=$(get_or_unset dawn.global.kicking_threshold)"
+
+# 4h3c. The signal score steps are pinned in every band.  A custom value only
+#       applies while its checkbox is set; out-of-range or non-numeric values
+#       fall back to the defaults, and turning the checkbox off removes a
+#       previously saved custom value from DAWN again.
+uci set dawn.802_11g.rssi=99
+uci set dawn.802_11g.low_rssi=-99
+uci set meshassistant.config.custom_signal_steps=1
+uci set meshassistant.config.rssi_step=20
+setup_dawn >/dev/null 2>&1
+echo "step_g=$(get_or_unset dawn.802_11g.rssi)"
+echo "step_low_g=$(get_or_unset dawn.802_11g.low_rssi)"
+echo "step_a=$(get_or_unset dawn.802_11a.rssi)"
+echo "step_low_ax=$(get_or_unset dawn.802_11ax.low_rssi)"
+uci delete meshassistant.config.custom_signal_steps
+setup_dawn >/dev/null 2>&1
+echo "step_off_g=$(get_or_unset dawn.802_11g.rssi)"
+echo "step_off_low_g=$(get_or_unset dawn.802_11g.low_rssi)"
+uci set meshassistant.config.custom_signal_steps=1
+uci set meshassistant.config.rssi_step=0
+setup_dawn >/dev/null 2>&1
+echo "step_zero_g=$(get_or_unset dawn.802_11g.rssi)"
+uci set meshassistant.config.rssi_step=abc
+setup_dawn >/dev/null 2>&1
+echo "step_junk_g=$(get_or_unset dawn.802_11g.rssi)"
+uci set meshassistant.config.rssi_step=101
+setup_dawn >/dev/null 2>&1
+echo "step_high_g=$(get_or_unset dawn.802_11g.rssi)"
+uci set meshassistant.config.rssi_step=020
+setup_dawn >/dev/null 2>&1
+echo "step_octal_g=$(get_or_unset dawn.802_11g.rssi)"
+uci set meshassistant.config.rssi_step=11
+setup_dawn >/dev/null 2>&1
+echo "step_min_g=$(get_or_unset dawn.802_11g.rssi)"
+echo "step_min_low_g=$(get_or_unset dawn.802_11g.low_rssi)"
+uci delete meshassistant.config.rssi_step
+uci delete meshassistant.config.custom_signal_steps
+setup_dawn >/dev/null 2>&1
 
 # Turning roaming off stops DAWN and restores the saved configuration.
 uci set meshassistant.config.kvr=0
@@ -2482,6 +2535,42 @@ function run() {
 		'removing the 5 GHz override restores the shared Good RSSI');
 	lib.eq(values.band_ax_inherit, '-88',
 		'removing band overrides keeps the shared thresholds');
+	lib.eq(values.dawn_step, '15',
+		'the default signal score step is pinned in DAWN');
+	lib.eq(values.dawn_low_step, '-15',
+		'the default bad-signal step is stored as a penalty');
+	lib.eq(values.weak_kicking, '1',
+		'weak-signal stay drops the absolute-RSSI kick');
+	lib.eq(values.weak_threshold, '10',
+		'weak-signal stay lowers the score margin');
+	lib.eq(values.weak_off_kicking, '3',
+		'turning weak-signal stay off restores both kick methods');
+	lib.eq(values.weak_off_threshold, '20',
+		'turning weak-signal stay off restores the score margin');
+	lib.eq(values.step_g, '20',
+		'a custom signal step replaces the 2.4 GHz default');
+	lib.eq(values.step_low_g, '-20',
+		'the custom step is stored as a penalty below the bad threshold');
+	lib.eq(values.step_a, '20',
+		'the custom signal step reaches the 5 GHz band');
+	lib.eq(values.step_low_ax, '-20',
+		'the custom signal step reaches the 6 GHz band');
+	lib.eq(values.step_off_g, '15',
+		'turning the custom step off restores the default in DAWN');
+	lib.eq(values.step_off_low_g, '-15',
+		'turning the custom step off restores the default penalty');
+	lib.eq(values.step_zero_g, '15',
+		'a step below 11 falls back to 15');
+	lib.eq(values.step_junk_g, '15',
+		'a non-numeric step falls back to 15');
+	lib.eq(values.step_high_g, '15',
+		'a step above 100 falls back to 15');
+	lib.eq(values.step_octal_g, '15',
+		'a leading-zero step is refused instead of read as octal');
+	lib.eq(values.step_min_g, '11',
+		'the smallest effective step is written through');
+	lib.eq(values.step_min_low_g, '-11',
+		'the smallest step is stored as a negative penalty');
 	lib.eq(values.dawn_restored, 'original-dawn-config',
 		'turning roaming off restores the pre-existing DAWN config');
 	lib.eq(values.dawn_released, 'no', 'turning roaming off drops the managed marker');
